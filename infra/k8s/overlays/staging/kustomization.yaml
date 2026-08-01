@@ -1,0 +1,145 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tradenest-staging
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - deployments.yaml
+  - services.yaml
+  - ingress.yaml
+  - configmap.yaml
+  - secrets.yaml
+
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: frontend
+                resources:
+                  limits:
+                    cpu: "500m"
+                    memory: "512Mi"
+                  requests:
+                    cpu: "250m"
+                    memory: "256Mi"
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=frontend
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: gateway
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: gateway
+                resources:
+                  limits:
+                    cpu: "500m"
+                    memory: "512Mi"
+                  requests:
+                    cpu: "250m"
+                    memory: "256Mi"
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=gateway
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: auth
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=auth
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: catalog
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=catalog
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: order
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=order
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: payment
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=payment
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ai
+      spec:
+        replicas: 1
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=ai
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: notification
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name=notification
+
+images:
+  - name: ghcr.io/tradenest/frontend
+    newTag: staging
+  - name: ghcr.io/tradenest/gateway
+    newTag: staging
+  - name: ghcr.io/tradenest/auth
+    newTag: staging
+  - name: ghcr.io/tradenest/catalog
+    newTag: staging
+  - name: ghcr.io/tradenest/order
+    newTag: staging
+  - name: ghcr.io/tradenest/payment
+    newTag: staging
+  - name: ghcr.io/tradenest/ai
+    newTag: staging
+  - name: ghcr.io/tradenest/notification
+    newTag: staging
+
+commonLabels:
+  environment: staging

@@ -1,0 +1,22 @@
+# Production overrides (extends values.yaml)
+global:
+  environment: production
+  domain: tradenest.io
+
+# Production uses defaults from values.yaml, only override if needed
+# Example: increase replicas for high traffic services
+auth:
+  replicaCount: 5
+  autoscaling:
+    maxReplicas: 20
+
+catalog:
+  replicaCount: 5
+  autoscaling:
+    maxReplicas: 20
+
+gateway:
+  replicaCount: 5
+
+frontend:
+  replicaCount: 5

@@ -1,0 +1,151 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: no-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Privileged containers are not allowed"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root-user
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Containers must run as non-root user"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: drop-all-capabilities
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: drop-all-caps
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "All capabilities must be dropped"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-host-network
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: no-host-network
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Host network is not allowed"
+        pattern:
+          spec:
+            hostNetwork: false
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-host-path-volumes
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: no-host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "HostPath volumes are not allowed"
+        deny:
+          conditions:
+            all:
+              - key: "{{ volumes[?(@.hostPath)] }}"
+                operator: Exists
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-read-only-root-filesystem
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: read-only-root-fs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Root filesystem must be read-only"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-resource-limits
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: limits-and-requests
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "All containers must have resource limits and requests"
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?.*"
+                    memory: "?.*"
+                  requests:
+                    cpu: "?.*"
+                    memory: "?.*"

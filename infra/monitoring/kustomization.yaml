@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - prometheus/configmap.yaml
+  - prometheus/rules.yaml
+  - servicemonitors/servicemonitors.yaml
+  - grafana/datasources.yaml
+  - grafana/dashboards/tradenest-overview.yaml
+  - loki/configmap.yaml
+  - alertmanager/configmap.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: tradenest-monitoring
+  app.kubernetes.io/managed-by: kustomize
+
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus.yml=prometheus/configmap.yaml
+  - name: loki-config
+    files:
+      - loki.yaml=loki/configmap.yaml
+  - name: alertmanager-config
+    files:
+      - alertmanager.yml=alertmanager/configmap.yaml
+  - name: grafana-datasources
+    files:
+      - datasources.yaml=grafana/datasources.yaml
+  - name: grafana-dashboard-tradenest-overview
+    files:
+      - tradenest-overview.json=grafana/dashboards/tradenest-overview.yaml

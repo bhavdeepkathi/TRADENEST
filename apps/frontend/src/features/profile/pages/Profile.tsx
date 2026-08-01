@@ -1,0 +1,217 @@
+import { motion } from 'framer-motion'
+import { useState } from 'react'
+import { useAppSelector } from '../../../app/hooks'
+import { User, Package, Heart, CreditCard, Settings, LogOut, Bell, Shield } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+import { clsx } from 'clsx'
+
+const tabs = [
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'orders', label: 'My Orders', icon: Package },
+  { id: 'addresses', label: 'Addresses', icon: Package },
+  { id: 'wishlist', label: 'Wishlist', icon: Heart },
+  { id: 'wallet', label: 'Wallet', icon: CreditCard },
+  { id: 'settings', label: 'Settings', icon: Settings },
+]
+
+export default function Profile() {
+  const [activeTab, setActiveTab] = useState('profile')
+  const { user } = useAppSelector((s) => s.auth)
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'profile':
+        return <ProfileInfo user={user} />
+      case 'orders':
+        return <OrdersList />
+      case 'addresses':
+        return <Addresses />
+      case 'wishlist':
+        return <WishlistTab />
+      case 'wallet':
+        return <Wallet />
+      case 'settings':
+        return <SettingsTab />
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="px-4 py-8">
+      <div className="mx-auto max-w-7xl">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid gap-8 lg:grid-cols-4"
+        >
+          <aside className="lg:col-span-1">
+            <div className="card p-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary-100 text-primary-600 dark:bg-primary-900/30">
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="" className="h-20 w-20 rounded-full object-cover" />
+                  ) : (
+                    <span className="text-2xl font-bold">{user?.firstName?.[0]}{user?.lastName?.[0]}</span>
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-semibold text-secondary-900 dark:text-secondary-50">
+                    {user?.firstName} {user?.lastName}
+                  </h2>
+                  <p className="text-sm text-secondary-500">{user?.email}</p>
+                  <span className={clsx('inline-flex mt-1 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', user?.role === 'SELLER' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400')}>
+                    {user?.role}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <nav className="mt-6 card overflow-hidden">
+              {tabs.map((tab) => (
+                <NavLink
+                  key={tab.id}
+                  to={`/profile#${tab.id}`}
+                  onClick={(e) => { e.preventDefault(); setActiveTab(tab.id) }}
+                  className={({ isActive }) => clsx(
+                    'flex w-full items-center gap-3 px-4 py-3 transition-colors border-l-4',
+                    isActive
+                      ? 'bg-primary-50 border-primary-500 text-primary-600 dark:bg-primary-900/20'
+                      : 'text-secondary-600 hover:bg-secondary-50 dark:text-secondary-400 dark:hover:bg-secondary-800'
+                  )}
+                >
+                  <tab.icon className="h-5 w-5" />
+                  {tab.label}
+                </NavLink>
+              ))}
+            </nav>
+          </aside>
+
+          <main className="lg:col-span-3">
+            <div id="content" className="card p-6 lg:p-8">
+              {renderContent()}
+            </div>
+          </main>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+function ProfileInfo({ user }: { user: any }) {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">Profile Information</h2>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div>
+          <label className="block mb-1 text-sm text-secondary-500">First Name</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50">{user?.firstName}</p>
+        </div>
+        <div>
+          <label className="block mb-1 text-sm text-secondary-500">Last Name</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50">{user?.lastName}</p>
+        </div>
+        <div>
+          <label className="block mb-1 text-sm text-secondary-500">Email</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50">{user?.email}</p>
+        </div>
+        <div>
+          <label className="block mb-1 text-sm text-secondary-500">Phone</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50">{user?.phone || 'Not provided'}</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block mb-1 text-sm text-secondary-500">Role</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50 capitalize">{user?.role?.toLowerCase()}</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block mb-1 text-sm text-secondary-500">Member Since</label>
+          <p className="font-medium text-secondary-900 dark:text-secondary-50">January 2024</p>
+        </div>
+      </div>
+      <div className="mt-6 flex gap-4">
+        <button className="btn btn-primary">Edit Profile</button>
+        <button className="btn btn-outline">Change Password</button>
+      </div>
+    </div>
+  )
+}
+
+function OrdersList() {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">My Orders</h2>
+      <p className="text-secondary-600 dark:text-secondary-400">Order history will appear here.</p>
+    </div>
+  )
+}
+
+function Addresses() {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">Saved Addresses</h2>
+      <p className="text-secondary-600 dark:text-secondary-400">No saved addresses yet.</p>
+      <button className="btn btn-primary mt-4">Add New Address</button>
+    </div>
+  )
+}
+
+function WishlistTab() {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">My Wishlist</h2>
+      <p className="text-secondary-600 dark:text-secondary-400">Your saved items will appear here.</p>
+    </div>
+  )
+}
+
+function Wallet() {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">Wallet</h2>
+      <div className="card p-6 bg-primary-50 dark:bg-primary-900/20">
+        <p className="text-secondary-600 dark:text-secondary-400">Current Balance</p>
+        <p className="text-3xl font-bold text-primary-600">₹0.00</p>
+      </div>
+      <div className="mt-4 flex gap-4">
+        <button className="btn btn-primary">Add Money</button>
+        <button className="btn btn-outline">Transaction History</button>
+      </div>
+    </div>
+  )
+}
+
+function SettingsTab() {
+  return (
+    <div>
+      <h2 className="mb-6 text-xl font-semibold text-secondary-900 dark:text-secondary-50">Settings</h2>
+      <div className="space-y-4 max-w-md">
+        <label className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-secondary-900 dark:text-secondary-50">Email Notifications</p>
+            <p className="text-sm text-secondary-500">Receive order updates & promotions</p>
+          </div>
+          <input type="checkbox" defaultChecked className="h-5 w-5 rounded border-secondary-300 text-primary-600 focus:ring-primary-500" />
+        </label>
+        <label className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-secondary-900 dark:text-secondary-50">Push Notifications</p>
+            <p className="text-sm text-secondary-500">Get real-time alerts</p>
+          </div>
+          <input type="checkbox" defaultChecked className="h-5 w-5 rounded border-secondary-300 text-primary-600 focus:ring-primary-500" />
+        </label>
+        <label className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-secondary-900 dark:text-secondary-50">Two-Factor Authentication</p>
+            <p className="text-sm text-secondary-500">Add extra security to your account</p>
+          </div>
+          <input type="checkbox" className="h-5 w-5 rounded border-secondary-300 text-primary-600 focus:ring-primary-500" />
+        </label>
+        <hr className="border-secondary-200 dark:border-secondary-700" />
+        <button className="btn btn-outline w-full justify-start text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out Everywhere
+        </button>
+      </div>
+    </div>
+  )
+}

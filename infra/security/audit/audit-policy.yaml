@@ -1,0 +1,47 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  # Log all requests at the Metadata level
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["pods", "services", "configmaps", "secrets", "persistentvolumes"]
+    verbs: ["create", "update", "patch", "delete"]
+  # Log all requests to RBAC resources at RequestResponse level
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  # Log all authentication attempts
+  - level: Metadata
+    resources:
+      - group: "authentication.k8s.io"
+        resources: ["tokenreviews"]
+  # Log all authorization attempts
+  - level: Metadata
+    resources:
+      - group: "authorization.k8s.io"
+        resources: ["subjectaccessreviews", "selfsubjectaccessreviews"]
+  # Log all secret reads
+  - level: Request
+    resources:
+      - group: ""
+        resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # Log all pod exec/attach/portforward
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+  # Omit health check requests
+  - level: None
+    userGroups: ["system:authenticated"]
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["nodes", "nodes/status"]
+  # Omit kube-probe user agent
+  - level: None
+    userAgents:
+      - "kube-probe*"
+    verbs: ["get", "list", "watch"]

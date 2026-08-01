@@ -1,0 +1,305 @@
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY = 'ghcr.io'
+        PROJECT_NAME = 'tradenest'
+        DOCKER_BUILDKIT = '1'
+        COMPOSE_DOCKER_CLI_BUILD = '1'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                sh 'npm ci'
+                sh 'npm run db:generate'
+            }
+        }
+
+        stage('Lint') {
+            parallel {
+                stage('Frontend Lint') {
+                    agent { label 'node' }
+                    steps {
+                        dir('apps/frontend') {
+                            sh 'npm run lint'
+                        }
+                    }
+                }
+                stage('Backend Lint') {
+                    agent { label 'node' }
+                    steps {
+                        dir('apps/backend/auth') { sh 'npm run lint' }
+                        dir('apps/backend/catalog') { sh 'npm run lint' }
+                        dir('apps/backend/order') { sh 'npm run lint' }
+                        dir('apps/backend/payment') { sh 'npm run lint' }
+                        dir('apps/backend/ai') { sh 'npm run lint' }
+                        dir('apps/backend/notification') { sh 'npm run lint' }
+                        dir('apps/backend/gateway') { sh 'npm run lint' }
+                    }
+                }
+                stage('Shared Libs Lint') {
+                    agent { label 'node' }
+                    steps {
+                        dir('libs/common') { sh 'npm run lint' }
+                        dir('libs/auth') { sh 'npm run lint' }
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            parallel {
+                stage('Unit Tests') {
+                    agent { label 'docker' }
+                    steps {
+                        sh '''
+                            docker-compose -f docker-compose.yml -f infra/docker/docker-compose.test.yml up -d postgres redis
+                            sleep 15
+                            npm run test:unit
+                            docker-compose -f docker-compose.yml -f infra/docker/docker-compose.test.yml down -v
+                        '''
+                    }
+                }
+                stage('Integration Tests') {
+                    agent { label 'docker' }
+                    steps {
+                        sh '''
+                            docker-compose -f docker-compose.yml -f infra/docker/docker-compose.test.yml up -d
+                            sleep 30
+                            npm run test:integration
+                            docker-compose -f docker-compose.yml -f infra/docker/docker-compose.test.yml down -v
+                        '''
+                    }
+                }
+                stage('Contract Tests') {
+                    agent { label 'node' }
+                    steps {
+                        sh 'npm run test:contract'
+                    }
+                }
+            }
+        }
+
+        stage('Build Images') {
+            parallel {
+                stage('Frontend') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/frontend:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/frontend:latest \
+                                    --push \
+                                    ./apps/frontend
+                            """
+                        }
+                    }
+                }
+                stage('Auth Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/auth:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/auth:latest \
+                                    --push \
+                                    ./apps/backend/auth
+                            """
+                        }
+                    }
+                }
+                stage('Catalog Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/catalog:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/catalog:latest \
+                                    --push \
+                                    ./apps/backend/catalog
+                            """
+                        }
+                    }
+                }
+                stage('Order Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/order:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/order:latest \
+                                    --push \
+                                    ./apps/backend/order
+                            """
+                        }
+                    }
+                }
+                stage('Payment Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/payment:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/payment:latest \
+                                    --push \
+                                    ./apps/backend/payment
+                            """
+                        }
+                    }
+                }
+                stage('AI Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/ai:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/ai:latest \
+                                    --push \
+                                    ./apps/backend/ai
+                            """
+                        }
+                    }
+                }
+                stage('Notification Service') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/notification:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/notification:latest \
+                                    --push \
+                                    ./apps/backend/notification
+                            """
+                        }
+                    }
+                }
+                stage('Gateway') {
+                    agent { label 'docker' }
+                    steps {
+                        script {
+                            def tag = env.BUILD_NUMBER ? "build-${env.BUILD_NUMBER}" : "latest"
+                            sh """
+                                docker buildx build \
+                                    --platform linux/amd64,linux/arm64 \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/gateway:${tag} \
+                                    --tag ${REGISTRY}/${PROJECT_NAME}/gateway:latest \
+                                    --push \
+                                    ./apps/backend/gateway
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            agent { label 'docker' }
+            steps {
+                sh '''
+                    for service in frontend auth catalog order payment ai notification gateway; do
+                        trivy image --severity HIGH,CRITICAL --exit-code 0 ${REGISTRY}/${PROJECT_NAME}/${service}:latest || true
+                    done
+                '''
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh '''
+                    kubectl config use-context staging
+                    TAG="build-${BUILD_NUMBER}"
+                    kubectl set image deployment/frontend frontend=${REGISTRY}/${PROJECT_NAME}/frontend:${TAG} -n tradenest-staging
+                    kubectl set image deployment/auth auth=${REGISTRY}/${PROJECT_NAME}/auth:${TAG} -n tradenest-staging
+                    kubectl set image deployment/catalog catalog=${REGISTRY}/${PROJECT_NAME}/catalog:${TAG} -n tradenest-staging
+                    kubectl set image deployment/order order=${REGISTRY}/${PROJECT_NAME}/order:${TAG} -n tradenest-staging
+                    kubectl set image deployment/payment payment=${REGISTRY}/${PROJECT_NAME}/payment:${TAG} -n tradenest-staging
+                    kubectl set image deployment/ai ai=${REGISTRY}/${PROJECT_NAME}/ai:${TAG} -n tradenest-staging
+                    kubectl set image deployment/notification notification=${REGISTRY}/${PROJECT_NAME}/notification:${TAG} -n tradenest-staging
+                    kubectl set image deployment/gateway gateway=${REGISTRY}/${PROJECT_NAME}/gateway:${TAG} -n tradenest-staging
+                    
+                    kubectl rollout status deployment/frontend -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/auth -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/catalog -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/order -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/payment -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/ai -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/notification -n tradenest-staging --timeout=300s
+                    kubectl rollout status deployment/gateway -n tradenest-staging --timeout=300s
+                '''
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                tag 'v*'
+            }
+            steps {
+                input message: 'Deploy to production?', ok: 'Deploy'
+                sh '''
+                    kubectl config use-context production
+                    TAG="${GIT_TAG}"
+                    kubectl set image deployment/frontend frontend=${REGISTRY}/${PROJECT_NAME}/frontend:${TAG} -n tradenest-prod
+                    kubectl set image deployment/auth auth=${REGISTRY}/${PROJECT_NAME}/auth:${TAG} -n tradenest-prod
+                    kubectl set image deployment/catalog catalog=${REGISTRY}/${PROJECT_NAME}/catalog:${TAG} -n tradenest-prod
+                    kubectl set image deployment/order order=${REGISTRY}/${PROJECT_NAME}/order:${TAG} -n tradenest-prod
+                    kubectl set image deployment/payment payment=${REGISTRY}/${PROJECT_NAME}/payment:${TAG} -n tradenest-prod
+                    kubectl set image deployment/ai ai=${REGISTRY}/${PROJECT_NAME}/ai:${TAG} -n tradenest-prod
+                    kubectl set image deployment/notification notification=${REGISTRY}/${PROJECT_NAME}/notification:${TAG} -n tradenest-prod
+                    kubectl set image deployment/gateway gateway=${REGISTRY}/${PROJECT_NAME}/gateway:${TAG} -n tradenest-prod
+                    
+                    kubectl rollout status deployment/frontend -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/auth -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/catalog -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/order -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/payment -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/ai -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/notification -n tradenest-prod --timeout=600s
+                    kubectl rollout status deployment/gateway -n tradenest-prod --timeout=600s
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            slackSend channel: '#deployments', color: 'good', message: "Build #${BUILD_NUMBER} succeeded!"
+        }
+        failure {
+            slackSend channel: '#deployments', color: 'danger', message: "Build #${BUILD_NUMBER} failed!"
+        }
+    }
+}

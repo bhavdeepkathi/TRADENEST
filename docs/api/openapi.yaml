@@ -1,0 +1,433 @@
+# API Contract (OpenAPI 3.0) – Skeleton
+
+```yaml
+openapi: 3.0.3
+info:
+  title: TRADENEST API
+  version: 1.0.0
+  description: |
+    Public contract for all micro‑services.
+    Auth: Bearer JWT (access) + Refresh token rotation.
+servers:
+  - url: https://api.tradenest.io/v1
+    description: Production
+  - url: http://localhost:4000/v1
+    description: Local dev
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: {type: string}
+        message: {type: string}
+        details: {type: object}
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken: {type: string}
+        refreshToken: {type: string}
+    UserPublic:
+      type: object
+      properties:
+        id: {type: string}
+        email: {type: string}
+        firstName: {type: string}
+        lastName: {type: string}
+        role: {type: string, enum: [CUSTOMER, SELLER, ADMIN, SUPER_ADMIN]}
+        avatarUrl: {type: string}
+    ProductSummary:
+      type: object
+      properties:
+        id: {type: string}
+        title: {type: string}
+        slug: {type: string}
+        price: {type: number, format: decimal}
+        mrp: {type: number, format: decimal}
+        images: {type: array, items: {type: string}}
+        ratingAvg: {type: number}
+        reviewCount: {type: integer}
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new user (customer or seller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, role, firstName, lastName]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, minLength: 8}
+                role: {type: string, enum: [CUSTOMER, SELLER]}
+                firstName: {type: string}
+                lastName: {type: string}
+                phone: {type: string}
+      responses:
+        '201':
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: {type: string}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/ConflictError'}
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and obtain JWT pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email: {type: string, format: email}
+                otp: {type: string, pattern: '^\\d{6}$'}
+      responses:
+        '200':
+          description: Token pair
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenPair'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/UnauthorizedError'}
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token
+      security: [{refreshAuth: []}]
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenPair'}
+        '401': {$ref: '#/components/responses/UnauthorizedError'}
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request password reset OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {type: string, format: email}
+      responses:
+        '200':
+          description: OTP sent
+        '404': {$ref: '#/components/responses/NotFoundError'}
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password with token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {type: string}
+                password: {type: string, minLength: 8}
+      responses:
+        '200':
+          description: Password updated
+        '400': {$ref: '#/components/responses/ValidationError'}
+
+  /products:
+    get:
+      tags: [Catalog]
+      summary: Search / list products with filters, pagination, sorting
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/category'
+        - $ref: '#/components/parameters/minPrice'
+        - $ref: '#/components/parameters/maxPrice'
+        - $ref: '#/components/parameters/rating'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/sort'
+      responses:
+        '200':
+          description: Paginated product list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/ProductSummary'}
+                  meta:
+                    type: object
+                    properties:
+                      page: {type: integer}
+                      limit: {type: integer}
+                      total: {type: integer}
+    post:
+      tags: [Catalog]
+      summary: Create product (seller only)
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, description, price, categoryId]
+              properties:
+                title: {type: string}
+                description: {type: string}
+                price: {type: number, format: decimal}
+                mrp: {type: number, format: decimal}
+                categoryId: {type: string}
+                tags: {type: array, items: {type: string}}
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '201':
+          description: Product created (pending approval)
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/UnauthorizedError'}
+        '403': {$ref: '#/components/responses/ForbiddenError'}
+
+  /products/{id}:
+    get:
+      tags: [Catalog]
+      summary: Get product detail
+      parameters:
+        - $ref: '#/components/parameters/productId'
+      responses:
+        '200':
+          description: Product detail
+        '404': {$ref: '#/components/responses/NotFoundError'}
+
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Get current user's cart
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Cart with items
+    post:
+      tags: [Cart]
+      summary: Add / update item
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: {type: string}
+                quantity: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Updated cart
+        '400': {$ref: '#/components/responses/ValidationError'}
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List my orders
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/orderStatus'
+      responses:
+        '200':
+          description: Paginated orders
+    post:
+      tags: [Orders]
+      summary: Place order from cart
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shippingAddressId, paymentMethod]
+              properties:
+                shippingAddressId: {type: string}
+                paymentMethod: {type: string, enum: [RAZORPAY, STRIPE, UPI, WALLET]}
+                couponCode: {type: string}
+      responses:
+        '201':
+          description: Order created, returns payment intent
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '402': {$ref: '#/components/responses/PaymentRequiredError'}
+
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Order detail
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/orderId'
+      responses:
+        '200':
+          description: Full order with items, payment, invoice
+        '404': {$ref: '#/components/responses/NotFoundError'}
+
+  /payments/intent:
+    post:
+      tags: [Payments]
+      summary: Create payment intent (Razorpay / Stripe / UPI)
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, provider]
+              properties:
+                orderId: {type: string}
+                provider: {type: string, enum: [RAZORPAY, STRIPE, UPI]}
+      responses:
+        '200':
+          description: Provider specific payload
+        '400': {$ref: '#/components/responses/ValidationError'}
+
+  /payments/webhook:
+    post:
+      tags: [Payments]
+      summary: Provider webhook (no auth, verified by signature)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200':
+          description: Acknowledged
+
+  /ai/recommendations:
+    get:
+      tags: [AI]
+      summary: Personalized recommendations for current user
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of product IDs with scores
+
+components:
+  parameters:
+    q:
+      name: q
+      in: query
+      schema: {type: string}
+      description: Free‑text search
+    category:
+      name: category
+      in: query
+      schema: {type: string}
+    minPrice:
+      name: minPrice
+      in: query
+      schema: {type: number, format: decimal}
+    maxPrice:
+      name: maxPrice
+      in: query
+      schema: {type: number, format: decimal}
+    rating:
+      name: rating
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 5}
+    page:
+      name: page
+      in: query
+      schema: {type: integer, default: 1}
+    limit:
+      name: limit
+      in: query
+      schema: {type: integer, default: 20, maximum: 100}
+    sort:
+      name: sort
+      in: query
+      schema: {type: string, enum: [price_asc, price_desc, newest, popularity]}
+    productId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    orderId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    orderStatus:
+      name: status
+      in: query
+      schema: {type: string, enum: [PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RETURNED]}
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    UnauthorizedError:
+      description: Invalid or missing token
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ForbiddenError:
+      description: Insufficient role
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ConflictError:
+      description: Duplicate resource
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    PaymentRequiredError:
+      description: Payment failed or required
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+security:
+  - bearerAuth: []
+```

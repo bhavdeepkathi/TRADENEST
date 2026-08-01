@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-waf
+  namespace: ingress-nginx
+data:
+  enable-modsecurity: "true"
+  modsecurity-snippet: |
+    SecRuleEngine On
+    SecRequestBodyAccess On
+    SecResponseBodyAccess Off
+    SecRule REQUEST_HEADERS:User-Agent "@pmFromFile /etc/nginx/blocked-user-agents.txt" "id:1000,phase:1,deny,status:403,msg:'Blocked User Agent'"
+    SecRule REQUEST_URI "@rx (?i)(union|select|insert|update|delete|drop|alter|create|exec|script|alert|onload|onerror)" "id:1001,phase:2,deny,status:403,msg:'SQL Injection / XSS Attempt'"
+    SecRule ARGS "@rx (?i)(<script|javascript:|on\w+\s*=)" "id:1002,phase:2,deny,status:403,msg:'XSS Attempt'"
+    SecRule REQUEST_METHOD "^(PUT|DELETE|PATCH)$" "id:1003,phase:1,deny,status:405,msg:'Method Not Allowed'"
+    SecRule &REQUEST_HEADERS:Content-Length "@gt 10485760" "id:1004,phase:1,deny,status:413,msg:'Request Entity Too Large'"
+    SecAction "id:9000,phase:1,pass,nolog,setvar:tx.paranoia_level=1"
+  blocked-user-agents.txt: |
+    *sqlmap*
+    *nmap*
+    *nikto*
+    *dirb*
+    *gobuster*
+    *wpscan*
+    *burpsuite*
+    *acunetix*
+    *nessus*
+    *openvas*

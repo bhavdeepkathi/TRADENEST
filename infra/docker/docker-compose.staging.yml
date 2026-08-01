@@ -1,0 +1,199 @@
+version: '3.8'
+
+# Staging environment - mirrors production but with reduced resources
+# Usage: docker-compose -f docker-compose.yml -f infra/docker/docker-compose.staging.yml up -d
+
+services:
+  # Database - staging uses smaller instance
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    environment:
+      POSTGRES_DB: tradenest_staging
+      POSTGRES_USER: tradenest_staging
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+
+  # Cache - staging
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # API Gateway - staging
+  gateway:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/gateway:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      JWT_REFRESH_SECRET: ${STAGING_JWT_REFRESH_SECRET}
+      REDIS_URL: redis://:redis_dev@redis:6379
+      AUTH_SERVICE_URL: http://backend-auth:4000
+      CATALOG_SERVICE_URL: http://backend-catalog:4000
+      ORDER_SERVICE_URL: http://backend-order:4000
+      PAYMENT_SERVICE_URL: http://backend-payment:4000
+      AI_SERVICE_URL: http://backend-ai:4000
+      NOTIFICATION_SERVICE_URL: http://backend-notification:4000
+
+  # Frontend - staging
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/frontend:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    environment:
+      VITE_API_URL: https://api.staging.tradenest.io/api
+
+  # Backend Auth - staging
+  backend-auth:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/auth:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      JWT_REFRESH_SECRET: ${STAGING_JWT_REFRESH_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+
+  # Backend Catalog - staging
+  backend-catalog:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/catalog:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+
+  # Backend Order - staging
+  backend-order:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/order:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+
+  # Backend Payment - staging
+  backend-payment:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/payment:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+      RAZORPAY_KEY_ID: ${STAGING_RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${STAGING_RAZORPAY_KEY_SECRET}
+      STRIPE_SECRET_KEY: ${STAGING_STRIPE_SECRET_KEY}
+
+  # Backend AI - staging
+  backend-ai:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/ai:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+      AI_MODEL_ENDPOINT: ${STAGING_AI_MODEL_ENDPOINT}
+
+  # Backend Notification - staging
+  backend-notification:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/notification:${STAGING_TAG:-staging}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      NODE_ENV: staging
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://tradenest_staging:${STAGING_DB_PASSWORD}@postgres:5432/tradenest_staging
+      REDIS_URL: redis://:redis_dev@redis:6379
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      CORS_ORIGIN: ${STAGING_FRONTEND_URL:-https://staging.tradenest.io}
+      SMTP_HOST: ${STAGING_SMTP_HOST}
+      SMTP_PORT: ${STAGING_SMTP_PORT:-587}
+      SMTP_USER: ${STAGING_SMTP_USER}
+      SMTP_PASS: ${STAGING_SMTP_PASS}
+      EMAIL_FROM: noreply@staging.tradenest.io
+
+networks:
+  tradenest-network:
+    driver: bridge
+    name: tradenest-staging-network

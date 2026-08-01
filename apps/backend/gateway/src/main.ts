@@ -1,0 +1,127 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import Redis from 'ioredis';
+import { RedisStore } from 'rate-limit-redis';
+
+import { gatewayConfig } from './config';
+import { serviceRoutes, createProxyMiddlewareForService } from './routes/proxy';
+import { createRouteAuthMiddleware, addSecurityHeaders, requestLogger, errorHandler } from './middleware';
+
+async function bootstrap() {
+  const app = express();
+  
+  app.set('trust proxy', 1);
+
+  // Security middleware
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
+
+  // CORS
+  app.use(cors({
+    origin: gatewayConfig.CORS_ORIGIN,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  }));
+
+  // Rate limiting
+  const redis = new Redis(gatewayConfig.REDIS_URL);
+  const limiter = rateLimit({
+    windowMs: gatewayConfig.RATE_LIMIT_WINDOW_MS,
+    max: gatewayConfig.RATE_LIMIT_MAX_REQUESTS,
+    message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: new RedisStore({
+      sendCommand: (...args: string[]) => redis.call(...args),
+    }),
+    keyGenerator: (req) => `gateway:${req.ip}`,
+  });
+  app.use('/api/', limiter);
+
+  // Body parsing
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Logging
+  if (gatewayConfig.NODE_ENV !== 'test') {
+    app.use(morgan('combined'));
+  }
+
+  // Security headers
+  app.use(addSecurityHeaders);
+  
+  // Request logging
+  app.use(requestLogger);
+
+  // Health check (no auth, no rate limit)
+  app.get('/health', (req, res) => {
+    res.json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      services: serviceRoutes.map(r => ({ path: r.path, target: r.target })),
+    });
+  });
+
+  // Auth middleware for routes
+  app.use('/api/', createRouteAuthMiddleware());
+
+  // Mount proxy routes
+  for (const route of serviceRoutes) {
+    app.use(route.path, createProxyMiddlewareForService(route));
+  }
+
+  // 404 handler
+  app.use((req, res) => {
+    res.status(404).json({ 
+      code: 'NOT_FOUND', 
+      message: `Route ${req.method} ${req.path} not found` 
+    });
+  });
+
+  // Global error handler
+  app.use(errorHandler);
+
+  // Test Redis connection
+  try {
+    await redis.ping();
+    console.log('✅ Redis connected');
+  } catch (error) {
+    console.error('❌ Redis connection failed:', error);
+  }
+
+  const server = app.listen(gatewayConfig.PORT, gatewayConfig.HOST, () => {
+    console.log(`🚀 API Gateway running on http://${gatewayConfig.HOST}:${gatewayConfig.PORT}`);
+    console.log(`📊 Environment: ${gatewayConfig.NODE_ENV}`);
+    console.log('🔀 Proxy routes:');
+    serviceRoutes.forEach(r => {
+      console.log(`   ${r.path} -> ${r.target} (auth: ${r.authRequired})`);
+    });
+  });
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`${signal} received, shutting down gracefully...`);
+    server.close(async () => {
+      await redis.quit();
+      console.log('Redis disconnected');
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+bootstrap().catch((error) => {
+  console.error('Failed to start gateway:', error);
+  process.exit(1);
+});

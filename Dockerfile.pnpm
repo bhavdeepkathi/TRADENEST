@@ -1,0 +1,48 @@
+
+# -------------------------------------------------
+#  Shared Dockerfile – builds any pnpm workspace
+# -------------------------------------------------
+# ---- Builder -------------------------------------------------
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Enable corepack (bundled with node ≥14) and activate the latest pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# 1️⃣  Copy only the lock‑file and the root manifest first (best cache)
+COPY pnpm-lock.yaml package.json ./
+
+# 2️⃣  Copy **all workspace manifests** so pnpm can resolve the workspaces
+COPY apps/*/package.json ./apps/
+COPY libs/*/package.json ./libs/
+
+# 3️⃣  Install **all** workspace dependencies once (frozen lock‑file = reproducible)
+RUN pnpm install --frozen-lockfile
+
+# 4️⃣  Copy the rest of the source code (prisma schemas, source files, libs/, apps/, …)
+COPY . .
+
+# Generate Prisma client for the services that have a prisma schema
+RUN for d in apps/backend/*/prisma/schema.prisma; do \
+      [ -f "$d" ] && pnpm -F $(basename $(dirname $(dirname $d))) exec prisma generate; \
+    done
+
+# Build only the requested workspace **and copy its dist to a common location**
+ARG SERVICE_NAME
+RUN pnpm -F ${SERVICE_NAME} run build \
+ && cp -r apps/backend/$(echo ${SERVICE_NAME} | sed 's/@tradenest\///')/dist /app/dist
+
+# ---- Runner --------------------------------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
+RUN apk add --no-cache dumb-init
+
+# Copy only production artefacts
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+
+USER node
+EXPOSE 4000
+ENTRYPOINT ["dumb-init","--"]
+CMD ["node","dist/main.js"]

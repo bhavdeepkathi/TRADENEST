@@ -1,0 +1,156 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:unit --prefix tests
+      - uses: codecov/codecov-action@v3
+        with:
+          files: ./tests/coverage/lcov.info
+          flags: unit
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: tradenest_test
+          POSTGRES_USER: tradenest
+          POSTGRES_PASSWORD: tradenest_test
+        ports: 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U tradenest -d tradenest_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:integration --prefix tests
+        env:
+          DATABASE_URL: postgresql://tradenest:tradenest_test@localhost:5432/tradenest_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-secret-min-32-characters-long
+          JWT_REFRESH_SECRET: test-refresh-secret-min-32-characters-long
+
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:contract --prefix tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacts
+          path: tests/contract/pacts/
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: tradenest_test
+          POSTGRES_USER: tradenest
+          POSTGRES_PASSWORD: tradenest_test
+        ports: 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U tradenest -d tradenest_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --workspaces --if-present
+      - run: docker-compose up -d
+      - run: sleep 30
+      - run: npm run test:e2e --prefix tests
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots
+          path: tests/e2e/cypress/screenshots/
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-videos
+          path: tests/e2e/cypress/videos/
+
+  load-test:
+    name: Load Test (Staging)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      - run: npm run test:load:staging --prefix tests
+        env:
+          STAGING_TOKEN: ${{ secrets.STAGING_API_TOKEN }}
+
+  chaos-test:
+    name: Chaos Test (Staging)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/k8s-set-context@v1
+        with:
+          kubeconfig: ${{ secrets.STAGING_KUBECONFIG }}
+      - run: kubectl apply -f tests/chaos/tradenest-chaos-engine.yaml -n tradenest-staging
+      - run: sleep 120
+      - run: kubectl delete chaosengine tradenest-chaos -n tradenest-staging

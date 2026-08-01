@@ -1,0 +1,33 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tradenest-tls
+  namespace: tradenest-prod
+spec:
+  secretName: tradenest-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - tradenest.io
+    - api.tradenest.io
+    - "*.tradenest.io"
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tradenest-staging-tls
+  namespace: tradenest-staging
+spec:
+  secretName: tradenest-staging-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - staging.tradenest.io
+    - api.staging.tradenest.io
+    - "*.staging.tradenest.io"
+  duration: 2160h
+  renewBefore: 360h

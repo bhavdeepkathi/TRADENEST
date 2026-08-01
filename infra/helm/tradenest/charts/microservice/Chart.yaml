@@ -1,0 +1,13 @@
+apiVersion: v2
+name: microservice
+description: A generic Helm chart for TRADENEST microservices
+type: library
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - tradenest
+  - microservice
+  - nodejs
+maintainers:
+  - name: TRADENEST Team
+    email: team@tradenest.io

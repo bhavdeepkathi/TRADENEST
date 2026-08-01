@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-tradenest-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  tradenest-overview.json: |
+    {
+      "dashboard": {
+        "title": "TRADENEST Overview",
+        "tags": ["tradenest", "overview"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Service Up",
+            "type": "stat",
+            "gridPos": {"x":0,"y":0,"w":6,"h":4},
+            "targets": [
+              {"expr": "up{job=~\"tradenest-.*\"}", "legendFormat": "{{job}}"}
+            ],
+            "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}]}, "overrides": []}
+          },
+          {
+            "title": "Request Rate (req/s)",
+            "type": "graph",
+            "gridPos": {"x":6,"y":0,"w":12,"h":8},
+            "targets": [
+              {"expr": "sum(rate(http_requests_total[5m])) by (job)", "legendFormat": "{{job}}"}
+            ]
+          },
+          {
+            "title": "Error Rate (5xx %)",
+            "type": "graph",
+            "gridPos": {"x":18,"y":0,"w":12,"h":8},
+            "targets": [
+              {"expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) by (job) / sum(rate(http_requests_total[5m])) by (job) * 100", "legendFormat": "{{job}}"}
+            ]
+          },
+          {
+            "title": "Latency p95 (s)",
+            "type": "graph",
+            "gridPos": {"x":0,"y":8,"w":12,"h":8},
+            "targets": [
+              {"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))", "legendFormat": "{{job}}"}
+            ]
+          },
+          {
+            "title": "Pod Restarts (last 15m)",
+            "type": "graph",
+            "gridPos": {"x":12,"y":8,"w":12,"h":8},
+            "targets": [
+              {"expr": "increase(kube_pod_container_status_restarts_total{namespace=~\"tradenest-.*\"}[15m])", "legendFormat": "{{pod}}"}
+            ]
+          },
+          {
+            "title": "CPU Usage % per Pod",
+            "type": "graph",
+            "gridPos": {"x":0,"y":16,"w":12,"h":8},
+            "targets": [
+              {"expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", namespace=~\"tradenest-.*\"}[5m])) by (pod) / sum(container_spec_cpu_quota/container_spec_cpu_period{container!=\"\", namespace=~\"tradenest-.*\"}) by (pod) * 100", "legendFormat": "{{pod}}"}
+            ]
+          },
+          {
+            "title": "Memory Usage % per Pod",
+            "type": "graph",
+            "gridPos": {"x":12,"y":16,"w":12,"h":8},
+            "targets": [
+              {"expr": "container_memory_usage_bytes{container!=\"\", namespace=~\"tradenest-.*\"} / container_spec_memory_limit_bytes * 100", "legendFormat": "{{pod}}"}
+            ]
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      },
+      "overwrite": true
+    }

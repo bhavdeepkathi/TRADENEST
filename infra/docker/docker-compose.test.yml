@@ -1,0 +1,77 @@
+version: '3.8'
+
+# Test environment for CI/CD pipelines
+# Usage: docker-compose -f docker-compose.yml -f infra/docker/docker-compose.test.yml up -d
+
+services:
+  # Test Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tradenest-postgres-test
+    environment:
+      POSTGRES_DB: tradenest_test
+      POSTGRES_USER: tradenest
+      POSTGRES_PASSWORD: tradenest_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradenest -d tradenest_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - tradenest-test-network
+
+  # Test Cache
+  redis:
+    image: redis:7-alpine
+    container_name: tradenest-redis-test
+    command: redis-server --appendonly no --requirepass redis_test
+    tmpfs:
+      - /data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - tradenest-test-network
+
+  # Test Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: tradenest-minio-test
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    tmpfs:
+      - /data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - tradenest-test-network
+
+  # Test Email
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: tradenest-mailhog-test
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - tradenest-test-network
+
+networks:
+  tradenest-test-network:
+    driver: bridge

@@ -1,0 +1,418 @@
+version: '3.8'
+
+# Production environment - optimized for performance and reliability
+# Usage: docker-compose -f docker-compose.yml -f infra/docker/docker-compose.prod.yml up -d
+
+services:
+  # Database - production with high availability
+  postgres:
+    image: postgres:15-alpine
+    container_name: tradenest-postgres-prod
+    environment:
+      POSTGRES_DB: tradenest
+      POSTGRES_USER: tradenest
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.role == manager
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradenest -d tradenest"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tradenest-prod-network
+
+  # Cache - production with clustering
+  redis:
+    image: redis:7-alpine
+    container_name: tradenest-redis-prod
+    command: redis-server --appendonly yes --requirepass ${PROD_REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_prod_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tradenest-prod-network
+
+  # Object Storage - production
+  minio:
+    image: minio/minio:latest
+    container_name: tradenest-minio-prod
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${PROD_MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${PROD_MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_prod_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+    networks:
+      - tradenest-prod-network
+
+  # API Gateway - production with multiple replicas
+  gateway:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/gateway:${PROD_TAG:-latest}
+    container_name: tradenest-gateway-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      JWT_REFRESH_SECRET: ${PROD_JWT_REFRESH_SECRET}
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      AUTH_SERVICE_URL: http://backend-auth:4000
+      CATALOG_SERVICE_URL: http://backend-catalog:4000
+      ORDER_SERVICE_URL: http://backend-order:4000
+      PAYMENT_SERVICE_URL: http://backend-payment:4000
+      AI_SERVICE_URL: http://backend-ai:4000
+      NOTIFICATION_SERVICE_URL: http://backend-notification:4000
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend-auth:
+        condition: service_healthy
+      backend-catalog:
+        condition: service_healthy
+      backend-order:
+        condition: service_healthy
+      backend-payment:
+        condition: service_healthy
+      backend-ai:
+        condition: service_healthy
+      backend-notification:
+        condition: service_healthy
+
+  # Frontend - production with nginx
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/frontend:${PROD_TAG:-latest}
+    container_name: tradenest-frontend-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    networks:
+      - tradenest-prod-network
+
+  # Backend Auth - production
+  backend-auth:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/auth:${PROD_TAG:-latest}
+    container_name: tradenest-auth-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      JWT_REFRESH_SECRET: ${PROD_JWT_REFRESH_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Backend Catalog - production
+  backend-catalog:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/catalog:${PROD_TAG:-latest}
+    container_name: tradenest-catalog-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Backend Order - production
+  backend-order:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/order:${PROD_TAG:-latest}
+    container_name: tradenest-order-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Backend Payment - production
+  backend-payment:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/payment:${PROD_TAG:-latest}
+    container_name: tradenest-payment-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+      RAZORPAY_KEY_ID: ${PROD_RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${PROD_RAZORPAY_KEY_SECRET}
+      STRIPE_SECRET_KEY: ${PROD_STRIPE_SECRET_KEY}
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Backend AI - production
+  backend-ai:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/ai:${PROD_TAG:-latest}
+    container_name: tradenest-ai-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+      AI_MODEL_ENDPOINT: ${PROD_AI_MODEL_ENDPOINT}
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Backend Notification - production
+  backend-notification:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-tradenest}/notification:${PROD_TAG:-latest}
+    container_name: tradenest-notification-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://tradenest:${PROD_DB_PASSWORD}@postgres:5432/tradenest
+      REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${PROD_JWT_SECRET}
+      CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+      SMTP_HOST: ${PROD_SMTP_HOST}
+      SMTP_PORT: ${PROD_SMTP_PORT:-587}
+      SMTP_USER: ${PROD_SMTP_USER}
+      SMTP_PASS: ${PROD_SMTP_PASS}
+      EMAIL_FROM: noreply@tradenest.io
+    networks:
+      - tradenest-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  minio_prod_data:
+
+networks:
+  tradenest-prod-network:
+    driver: overlay
+    attachable: true
+    name: tradenest-prod-network

@@ -1,0 +1,46 @@
+apiVersion: v2
+name: tradenest
+description: Umbrella Helm chart for TRADENEST platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - tradenest
+  - marketplace
+  - microservices
+maintainers:
+  - name: TRADENEST Team
+    email: team@tradenest.io
+dependencies:
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: auth
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: catalog
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: order
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: payment
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: ai
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: notification
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: gateway
+  - name: microservice
+    version: "0.1.0"
+    repository: "file://../microservice"
+    alias: frontend

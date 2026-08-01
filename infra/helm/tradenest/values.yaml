@@ -1,0 +1,226 @@
+# TRADENEST Umbrella Chart Values
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+  namespace: tradenest
+  domain: tradenest.io
+  environment: production
+
+auth:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/auth
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+catalog:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/catalog
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+order:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/order
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+payment:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/payment
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+ai:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/tradenest/ai
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+notification:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/tradenest/notification
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+gateway:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/gateway
+    tag: latest
+  service:
+    port: 4000
+    targetPort: 4000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "4000"
+  envFrom:
+    - secretRef:
+        name: tradenest-secrets
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/rate-limit: "100"
+    hosts:
+      - host: api.tradenest.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: tradenest-tls
+        hosts:
+          - api.tradenest.io
+
+frontend:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/tradenest/frontend
+    tag: latest
+  service:
+    port: 80
+    targetPort: 8080
+  env: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - host: tradenest.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: tradenest-tls
+        hosts:
+          - tradenest.io

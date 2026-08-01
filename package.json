@@ -1,0 +1,45 @@
+{
+  "name": "tradenest",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "dev": "docker-compose up --build",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "dev:auth": "npm run dev --workspace=apps/backend/auth",
+    "dev:catalog": "npm run dev --workspace=apps/backend/catalog",
+    "dev:order": "npm run dev --workspace=apps/backend/order",
+    "dev:payment": "npm run dev --workspace=apps/backend/payment",
+    "dev:ai": "npm run dev --workspace=apps/backend/ai",
+    "dev:notification": "npm run dev --workspace=apps/backend/notification",
+    "build": "npm run build --workspaces --if-present",
+    "build:frontend": "npm run build --workspace=apps/frontend",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\"",
+    "test": "npm run test --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspaces --if-present",
+    "db:generate": "npx prisma generate --schema=./prisma/schema.prisma",
+    "db:migrate": "npx prisma migrate dev --schema=./prisma/schema.prisma",
+    "db:migrate:deploy": "npx prisma migrate deploy --schema=./prisma/schema.prisma",
+    "db:push": "npx prisma db push --schema=./prisma/schema.prisma",
+    "db:studio": "npx prisma studio --schema=./prisma/schema.prisma",
+    "db:seed": "npx tsx prisma/seed.ts --schema=./prisma/schema.prisma",
+    "db:reset": "npx prisma migrate reset --force --schema=./prisma/schema.prisma && npm run db:seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down -v",
+    "docker:logs": "docker-compose logs -f",
+    "dev:setup": "bash scripts/dev-setup.sh",
+    "clean": "rm -rf node_modules apps/*/node_modules libs/*/node_modules apps/*/dist apps/*/build"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "prettier-plugin-tailwindcss": "^0.5.11"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.7.0"
+}
