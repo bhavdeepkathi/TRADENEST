@@ -4,7 +4,8 @@
 // ===========================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -257,7 +258,6 @@ model Admin {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   level     Int      @default(1)
   createdAt DateTime @default(now())
-  auditLogs AuditLog[]
 
   @@index([level])
 }
@@ -416,6 +416,7 @@ model OrderItem {
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
+  product   Product  @relation(fields: [productId], references: [id])
   sellerId  String
   seller    Seller   @relation(fields: [sellerId], references: [id])
   title     String

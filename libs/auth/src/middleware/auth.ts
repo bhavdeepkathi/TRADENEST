@@ -15,7 +15,9 @@ export function createAuthMiddleware(options?: {
 }) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const token = extractTokenFromHeader(req.headers.authorization);
+      const authHeader = req.headers?.authorization;
+      const tokenStr = typeof authHeader === 'string' ? authHeader : Array.isArray(authHeader) ? authHeader[0] : undefined;
+      const token = extractTokenFromHeader(tokenStr);
       
       if (!token) {
         if (options?.optional) {

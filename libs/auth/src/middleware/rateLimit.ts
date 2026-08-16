@@ -2,9 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import Redis from 'ioredis';
-import { config } from '../config';
 
-const redis = new Redis(config.REDIS_URL || 'redis://localhost:6379');
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -16,7 +15,7 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(...args),
+    sendCommand: (...args: string[]) => (redis.call as any)(args[0], ...args.slice(1)),
   }),
   keyGenerator: (req: Request) => `auth:${req.ip}:${req.path}`,
   skipSuccessfulRequests: false,
@@ -33,7 +32,7 @@ export const apiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(...args),
+    sendCommand: (...args: string[]) => (redis.call as any)(args[0], ...args.slice(1)),
   }),
   keyGenerator: (req: Request) => `api:${req.ip}`,
 });
@@ -48,7 +47,7 @@ export const strictRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(...args),
+    sendCommand: (...args: string[]) => (redis.call as any)(args[0], ...args.slice(1)),
   }),
   keyGenerator: (req: Request) => `strict:${req.ip}:${req.path}`,
 });
@@ -69,7 +68,7 @@ export function createRateLimiter(options: {
     standardHeaders: true,
     legacyHeaders: false,
     store: new RedisStore({
-      sendCommand: (...args: string[]) => redis.call(...args),
+      sendCommand: (...args: string[]) => (redis.call as any)(args[0], ...args.slice(1)),
     }),
     keyGenerator: (req: Request) => `${options.keyPrefix || 'rl'}:${req.ip}:${req.path}`,
   });

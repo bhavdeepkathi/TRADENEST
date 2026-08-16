@@ -13,13 +13,13 @@ const authConfigSchema = z.object({
 
 export type AuthConfig = z.infer<typeof authConfigSchema>;
 
-let config: AuthConfig;
+export let config: AuthConfig;
 
 export function getAuthConfig(): AuthConfig {
   if (!config) {
     const result = authConfigSchema.safeParse({
-      jwtSecret: process.env.JWT_SECRET,
-      jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
+      jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars',
+      jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-in-production-min-32-chars',
       jwtAccessExpiry: process.env.JWT_ACCESS_EXPIRY,
       jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY,
       jwtAlgorithm: process.env.JWT_ALGORITHM,

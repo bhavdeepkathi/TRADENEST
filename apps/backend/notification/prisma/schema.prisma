@@ -1,18 +1,32 @@
 // Prisma Schema for Notification Service
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
 
-enum NotificationType { ORDER PROMO SYSTEM PAYMENT SHIPPING }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum NotificationType {
+  ORDER
+  PROMO
+  SYSTEM
+  PAYMENT
+  SHIPPING
+}
 
 model Notification {
-  id        String            @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
   type      NotificationType
   title     String
   body      String
   data      Json?
-  read      Boolean           @default(false)
-  createdAt DateTime          @default(now())
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
   @@index([userId, read])
   @@index([userId, createdAt])
 }
@@ -34,5 +48,6 @@ model DeviceToken {
   platform  String
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+
   @@index([userId])
 }

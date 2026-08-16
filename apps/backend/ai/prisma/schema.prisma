@@ -1,6 +1,13 @@
 // Prisma Schema for AI Service
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 model AIRecommendation {
   id        String   @id @default(cuid())
@@ -10,6 +17,7 @@ model AIRecommendation {
   score     Float
   metadata  Json?
   createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([productId])
   @@index([type])
@@ -22,6 +30,7 @@ model TrendingProduct {
   windowStart DateTime
   windowEnd   DateTime
   createdAt   DateTime @default(now())
+
   @@index([windowStart, windowEnd])
 }
 
@@ -32,6 +41,7 @@ model SalesForecast {
   period      String
   forecast    Json
   createdAt   DateTime @default(now())
+
   @@index([productId, period])
   @@index([categoryId, period])
 }
@@ -42,6 +52,7 @@ model CustomerBehavior {
   eventType String
   eventData Json
   createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([eventType])
   @@index([createdAt])
@@ -56,6 +67,7 @@ model FraudAlert {
   details   Json
   resolved  Boolean  @default(false)
   createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([orderId])
   @@index([severity])

@@ -1,6 +1,9 @@
 {
   "name": "tradenest",
   "private": true,
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
   "workspaces": [
     "apps/*",
     "libs/*"
@@ -36,7 +39,10 @@
   },
   "devDependencies": {
     "prettier": "^3.2.5",
-    "prettier-plugin-tailwindcss": "^0.5.11"
+    "prettier-plugin-tailwindcss": "^0.5.11",
+    "prisma": "^5.22.0",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.1"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify, JWTPayload, createSecretKey } from 'jose';
+import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { getAuthConfig } from '../config';
 import { JwtPayload, UserRole } from '@tradenest/common';
 

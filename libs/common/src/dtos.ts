@@ -214,18 +214,27 @@ export type ProductResponse = z.infer<typeof ProductResponseSchema>;
 // Category DTOs
 // ===========================================
 
-export const CategoryResponseSchema = z.object({
+export type CategoryResponse = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  parentId?: string | null;
+  children?: CategoryResponse[];
+  productCount?: number;
+  createdAt: Date;
+};
+
+export const CategoryResponseSchema: z.ZodType<CategoryResponse> = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string(),
-  description: z.string().nullable(),
-  parentId: z.string().nullable(),
+  description: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
   children: z.array(z.lazy(() => CategoryResponseSchema)).optional(),
   productCount: z.number().optional(),
   createdAt: z.date(),
 });
-
-export type CategoryResponse = z.infer<typeof CategoryResponseSchema>;
 
 export const CreateCategoryDtoSchema = z.object({
   name: z.string().min(2).max(100),

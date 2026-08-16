@@ -60,11 +60,11 @@ export function maskPhone(phone: string): string {
 
 export function sanitizeHtml(html: string): string {
   return html
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/'/g, ''')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
     .replace(/\//g, '&#x2F;');
 }
 
