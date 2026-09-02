@@ -283,7 +283,7 @@ export default function Home() {
             animate="visible"
             className="grid grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-6"
           >
-            {stats.map((stat, i) => (
+            {stats.map((stat) => (
               <motion.div
                 key={stat.label}
                 variants={itemVariants}
