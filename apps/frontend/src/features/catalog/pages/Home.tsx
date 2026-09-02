@@ -329,7 +329,7 @@ export default function Home() {
             animate="visible"
             className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
           >
-            {features.map((feature, i) => (
+            {features.map((feature) => (
               <motion.article
                 key={feature.title}
                 variants={itemVariants}
@@ -381,7 +381,7 @@ export default function Home() {
             <div className="hidden lg:block absolute top-10 left-1/2 -translate-x-1/2 h-20 w-px bg-gradient-to-b from-primary-200 to-transparent dark:from-primary-800" />
             
             <div className="grid gap-12 lg:grid-cols-4">
-              {howItWorks.map((step) => (
+              {howItWorks.map((step, index) => (
                 <motion.div
                   key={step.title}
                   variants={itemVariants}
