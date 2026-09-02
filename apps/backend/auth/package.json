@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc",
+    "prebuild": "npm run prisma:generate",  
     "start": "node dist/main.js",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
@@ -18,8 +19,8 @@
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@tradenest/common": "workspace:*",
-    "@prisma/client": "^5.9.0",
+    "@tradenest/common": "*",
+    "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

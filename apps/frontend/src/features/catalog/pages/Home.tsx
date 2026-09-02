@@ -1,87 +1,748 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { ShoppingCart, Heart, Truck, Shield, Star, Zap } from 'lucide-react'
+import {
+  ShoppingCart,
+  Heart,
+  Truck,
+  Shield,
+  Star,
+  Zap,
+  ArrowRight,
+  CheckCircle,
+  Users,
+  Package,
+  Globe,
+  Smartphone,
+  CreditCard,
+  Award,
+  TrendingUp,
+  BarChart3,
+  MessageSquare,
+  Lock,
+  RefreshCw,
+  MapPin,
+  Clock,
+  Search,
+  Home as HomeIcon,
+  Building2,
+  Layers,
+  Sparkles,
+  ChevronRight,
+} from 'lucide-react'
 
 const features = [
-  { icon: Zap, title: 'AI Recommendations', desc: 'Personalized product suggestions powered by machine learning' },
-  { icon: Shield, title: 'Secure Payments', desc: 'Razorpay, Stripe, UPI with end-to-end encryption' },
-  { icon: Truck, title: 'Fast Delivery', desc: 'Real-time tracking with multiple logistics partners' },
-  { icon: Heart, title: 'Wishlist & Alerts', desc: 'Save favorites and get price drop notifications' },
-  { icon: Star, title: 'Reviews & Ratings', desc: 'Verified purchase reviews with photo uploads' },
-  { icon: ShoppingCart, title: 'Smart Cart', desc: 'Persistent cart with auto-coupon application' },
+  {
+    icon: Zap,
+    title: 'AI-Powered Recommendations',
+    desc: 'Machine learning algorithms analyze your browsing behavior to deliver personalized product suggestions that match your preferences.',
+    highlight: 'Smart Discovery',
+  },
+  {
+    icon: Shield,
+    title: 'Enterprise-Grade Security',
+    desc: 'End-to-end encryption, PCI-DSS compliant payments via Razorpay & Stripe, UPI integration, and advanced fraud detection.',
+    highlight: 'Secure Transactions',
+  },
+  {
+    icon: Truck,
+    title: 'Lightning-Fast Delivery',
+    desc: 'Real-time order tracking with multiple logistics partners (Delhivery, Blue Dart, Ecom Express) covering 19,000+ pin codes.',
+    highlight: 'Pan-India Coverage',
+  },
+  {
+    icon: Heart,
+    title: 'Smart Wishlist & Alerts',
+    desc: 'Save favorites, create collections, and get instant price drop, back-in-stock, and flash sale notifications via email & push.',
+    highlight: 'Never Miss a Deal',
+  },
+  {
+    icon: Star,
+    title: 'Verified Reviews & Ratings',
+    desc: 'Authentic reviews from verified purchasers with photo/video uploads, helpful votes, and AI-powered sentiment analysis.',
+    highlight: 'Trust & Transparency',
+  },
+  {
+    icon: ShoppingCart,
+    title: 'Intelligent Cart & Checkout',
+    desc: 'Persistent cart across devices, auto-coupon application, saved addresses, one-click reorder, and split payment options.',
+    highlight: 'Seamless Checkout',
+  },
 ]
+
+const stats = [
+  { value: '2.5M+', label: 'Active Users', icon: Users },
+  { value: '500K+', label: 'Products Listed', icon: Package },
+  { value: '19K+', label: 'Pin Codes Served', icon: MapPin },
+  { value: '99.2%', label: 'On-Time Delivery', icon: Clock },
+  { value: '4.8/5', label: 'App Store Rating', icon: Award },
+  { value: '₹500Cr+', label: 'GMV Processed', icon: TrendingUp },
+]
+
+const howItWorks = [
+  {
+    step: '01',
+    title: 'Discover & Search',
+    desc: 'Browse 500K+ products across 50+ categories with AI-powered search, smart filters, and visual search.',
+    icon: Search,
+  },
+  {
+    step: '02',
+    title: 'Compare & Decide',
+    desc: 'Side-by-side comparison, verified reviews, seller ratings, price history, and AI-generated buying guides.',
+    icon: BarChart3,
+  },
+  {
+    step: '03',
+    title: 'Secure Checkout',
+    desc: 'Multiple payment options (Cards, UPI, Net Banking, EMI, COD), saved cards, and buyer protection guarantee.',
+    icon: CreditCard,
+  },
+  {
+    step: '04',
+    title: 'Track & Receive',
+    desc: 'Real-time tracking, delivery notifications, easy returns/refunds, and 24/7 customer support.',
+    icon: Truck,
+  },
+]
+
+const categories = [
+  { name: 'Electronics', count: '125K+', icon: Smartphone, color: 'bg-blue-500' },
+  { name: 'Fashion', count: '98K+', icon: Heart, color: 'bg-pink-500' },
+  { name: 'Home & Kitchen', count: '87K+', icon: HomeIcon, color: 'bg-amber-500' },
+  { name: 'Beauty & Personal Care', count: '65K+', icon: Sparkles, color: 'bg-rose-500' },
+  { name: 'Sports & Fitness', count: '42K+', icon: TrendingUp, color: 'bg-green-500' },
+  { name: 'Books & Media', count: '38K+', icon: Layers, color: 'bg-indigo-500' },
+  { name: 'Automotive', count: '28K+', icon: Truck, color: 'bg-slate-500' },
+  { name: 'Business & Industrial', count: '17K+', icon: Building2, color: 'bg-orange-500' },
+]
+
+const testimonials = [
+  {
+    name: 'Priya Sharma',
+    role: 'Fashion Entrepreneur, Mumbai',
+    avatar: 'PS',
+    rating: 5,
+    text: 'TRADENEST transformed my boutique business. The seller tools are incredible - inventory management, automated pricing, and the analytics dashboard helped me scale from 50 to 5000 orders/month in just 8 months.',
+    verified: true,
+  },
+  {
+    name: 'Rajesh Kumar',
+    role: 'Electronics Buyer, Bangalore',
+    avatar: 'RK',
+    rating: 5,
+    text: 'Best price comparison and genuine products. I saved ₹15,000 on my laptop purchase compared to other platforms. The price drop alert feature is a game-changer - never miss a deal!',
+    verified: true,
+  },
+  {
+    name: 'Anita Desai',
+    role: 'Home Decor Seller, Delhi',
+    avatar: 'AD',
+    rating: 5,
+    text: 'The logistics integration is seamless. My products reach customers in Tier-2/3 cities within 48 hours. The seller protection policy gave me confidence to expand my catalog from 20 to 500 SKUs.',
+    verified: true,
+  },
+]
+
+const trustBadges = [
+  { icon: Lock, title: 'SSL Secured', desc: '256-bit encryption' },
+  { icon: RefreshCw, title: 'Easy Returns', desc: '7-day no-questions policy' },
+  { icon: Shield, title: 'Buyer Protection', desc: 'Full refund guarantee' },
+  { icon: CreditCard, title: 'Multiple Payments', desc: 'UPI, Cards, EMI, COD' },
+  { icon: Globe, title: 'Pan-India Delivery', desc: '19,000+ pin codes' },
+  { icon: MessageSquare, title: '24/7 Support', desc: 'Chat, Email, Phone' },
+]
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+}
 
 export default function Home() {
   return (
-    <div className="px-4 py-16 sm:py-24">
-      <section className="mx-auto max-w-7xl text-center">
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 text-4xl font-bold tracking-tight text-secondary-900 dark:text-secondary-50 sm:text-6xl"
-        >
-          Welcome to <span className="text-primary-600">TRADENEST</span>
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mx-auto max-w-2xl text-lg text-secondary-600 dark:text-secondary-300"
-        >
-          India's next-gen AI-powered digital marketplace. Discover, buy, and sell with confidence.
-        </motion.p>
+    <div className="min-h-screen">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden px-4 py-20 sm:py-32 lg:py-40 bg-gradient-to-b from-primary-50 to-white dark:from-secondary-900 dark:to-secondary-950">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%230ea5e9%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-50" />
+        <div className="absolute inset-0 bg-gradient-radial from-primary-100/50 via-transparent to-transparent dark:from-primary-900/20" />
+        
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mt-10 flex gap-4 justify-center"
+          transition={{ duration: 0.8 }}
+          className="relative mx-auto max-w-7xl"
         >
-          <Link to="/products" className="btn btn-primary text-lg px-8">
-            Explore Products
-          </Link>
-          <Link to="/register" className="btn btn-outline text-lg px-8">
-            Start Selling
-          </Link>
+          {/* Trust Indicators */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mb-8 flex flex-wrap items-center justify-center gap-6 text-sm text-secondary-500 dark:text-secondary-400"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>4.8★ App Store Rating</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>2.5M+ Happy Customers</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>500K+ Products</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>Free Shipping on ₹499+</span>
+            </div>
+          </motion.div>
+
+          {/* Main Headline */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-center"
+          >
+            <h1 className="mb-6 text-5xl font-bold tracking-tight text-secondary-900 dark:text-secondary-50 sm:text-7xl">
+              India&apos;s Smartest
+              <br />
+              <span className="bg-gradient-to-r from-primary-600 via-primary-500 to-primary-600 bg-clip-text text-transparent">
+                Digital Marketplace
+              </span>
+            </h1>
+            <p className="mx-auto max-w-3xl text-lg text-secondary-600 dark:text-secondary-300 sm:text-xl">
+              Discover, buy, and sell with AI-powered recommendations, secure payments, 
+              lightning-fast delivery across 19,000+ pin codes. Join 2.5M+ users today.
+            </p>
+          </motion.div>
+
+          {/* CTA Buttons */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center"
+          >
+            <Link
+              to="/products"
+              className="group btn btn-primary text-lg px-10 py-3 gap-2"
+            >
+              Start Shopping
+              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </Link>
+            <Link
+              to="/register"
+              className="group btn btn-outline text-lg px-10 py-3 border-primary-600 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"
+            >
+              Start Selling
+              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </motion.div>
+
+          {/* Search Bar Preview */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mt-16 mx-auto max-w-3xl"
+          >
+            <div className="relative rounded-xl bg-white shadow-xl ring-1 ring-secondary-200 dark:bg-secondary-800 dark:ring-secondary-700 p-1">
+              <div className="relative flex items-center rounded-lg bg-secondary-50 dark:bg-secondary-700/50 px-4 py-3">
+                <Search className="h-5 w-5 text-secondary-400" />
+                <input
+                  type="search"
+                  placeholder="Search products, brands, categories... (e.g., iPhone 15, Nike shoes, Kitchen appliances)"
+                  className="flex-1 ml-3 bg-transparent placeholder-secondary-400 focus:outline-none text-secondary-900 dark:text-secondary-100"
+                  readOnly
+                />
+                <div className="flex items-center gap-2 ml-3 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-sm font-medium">
+                  <Zap className="h-4 w-4" />
+                  AI Search
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-center text-sm text-secondary-500 dark:text-secondary-400">
+              Try: <span className="font-medium text-secondary-700 dark:text-secondary-300">"wireless headphones under ₹3000"</span> or{" "}
+              <span className="font-medium text-secondary-700 dark:text-secondary-300">"cotton summer dresses"</span>
+            </p>
+          </motion.div>
         </motion.div>
       </section>
 
-      <section className="mt-24 mx-auto max-w-7xl">
-        <h2 className="mb-12 text-center text-3xl font-bold text-secondary-900 dark:text-secondary-50">
-          Why Choose TRADENEST?
-        </h2>
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f, i) => (
-            <motion.article
-              key={f.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 * i }}
-              className="card p-6"
-            >
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
-                <f.icon className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold text-secondary-900 dark:text-secondary-50">{f.title}</h3>
-              <p className="text-secondary-600 dark:text-secondary-300">{f.desc}</p>
-            </motion.article>
-          ))}
+      {/* Stats Bar */}
+      <section className="px-4 py-12 bg-white dark:bg-secondary-900 border-y border-secondary-200 dark:border-secondary-800">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-6"
+          >
+            {stats.map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                variants={itemVariants}
+                className="flex flex-col items-center text-center p-4"
+              >
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                  <stat.icon className="h-6 w-6" />
+                </div>
+                <div className="text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+                  {stat.value}
+                </div>
+                <div className="text-sm text-secondary-600 dark:text-secondary-400">{stat.label}</div>
+              </motion.div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
-      <section className="mt-24 mx-auto max-w-7xl text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl bg-gradient-to-r from-primary-600 to-primary-800 px-8 py-16"
-        >
-          <h2 className="mb-4 text-3xl font-bold text-white">Ready to start selling?</h2>
-          <p className="mb-8 mx-auto max-w-xl text-lg text-primary-100">
-            Join thousands of sellers growing their business on TRADENEST. Free to start, pay only when you sell.
-          </p>
-          <Link to="/register" className="btn bg-white text-primary-600 hover:bg-primary-50 px-8 text-lg">
-            Create Seller Account
-          </Link>
-        </motion.div>
+      {/* Features Section */}
+      <section className="px-4 py-24 sm:py-32 bg-white dark:bg-secondary-900">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-16 text-center"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-4 py-1.5 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              <Sparkles className="h-4 w-4" />
+              Why Choose TRADENEST
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+              Everything you need for a seamless shopping experience
+            </h2>
+            <p className="mt-4 mx-auto max-w-2xl text-lg text-secondary-600 dark:text-secondary-300">
+              Built for modern Indian shoppers and sellers with cutting-edge technology, 
+              unmatched selection, and customer-first policies.
+            </p>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {features.map((feature, i) => (
+              <motion.article
+                key={feature.title}
+                variants={itemVariants}
+                className="group card p-6 hover:shadow-xl hover:border-primary-200 dark:hover:border-primary-800 transition-all duration-300"
+              >
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white group-hover:scale-110 transition-all duration-300">
+                  <feature.icon className="h-7 w-7" />
+                </div>
+                <span className="mb-3 inline-block text-xs font-semibold text-primary-600 dark:text-primary-400">
+                  {feature.highlight}
+                </span>
+                <h3 className="mb-2 text-xl font-semibold text-secondary-900 dark:text-secondary-50">
+                  {feature.title}
+                </h3>
+                <p className="text-secondary-600 dark:text-secondary-300">{feature.desc}</p>
+              </motion.article>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section className="px-4 py-24 sm:py-32 bg-secondary-50 dark:bg-secondary-950">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-16 text-center"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-4 py-1.5 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              <Sparkles className="h-4 w-4" />
+              How It Works
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+              Shop smarter in 4 simple steps
+            </h2>
+            <p className="mt-4 mx-auto max-w-2xl text-lg text-secondary-600 dark:text-secondary-300">
+              From discovery to doorstep, we&apos;ve streamlined every step of your shopping journey.
+            </p>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="relative"
+          >
+            {/* Connecting line */}
+            <div className="hidden lg:block absolute top-10 left-1/2 -translate-x-1/2 h-20 w-px bg-gradient-to-b from-primary-200 to-transparent dark:from-primary-800" />
+            
+            <div className="grid gap-12 lg:grid-cols-4">
+              {howItWorks.map((step) => (
+                <motion.div
+                  key={step.title}
+                  variants={itemVariants}
+                  className="relative flex flex-col items-center text-center"
+                >
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-white text-primary-600 shadow-lg dark:bg-secondary-800 ring-4 ring-white dark:ring-secondary-900">
+                    <span className="text-3xl font-bold">{step.step}</span>
+                  </div>
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                    <step.icon className="h-7 w-7" />
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold text-secondary-900 dark:text-secondary-50">
+                    {step.title}
+                  </h3>
+                  <p className="text-secondary-600 dark:text-secondary-300">{step.desc}</p>
+                  
+                  {i < howItWorks.length - 1 && (
+                    <div className="hidden lg:absolute lg:top-10 lg:left-1/2 lg:w-1/2 lg:h-px lg:bg-gradient-to-r lg:from-primary-200 lg:to-transparent dark:lg:from-primary-800 dark:lg:to-transparent" />
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Categories Section */}
+      <section className="px-4 py-24 sm:py-32 bg-white dark:bg-secondary-900">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12 text-center"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-4 py-1.5 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              <Layers className="h-4 w-4" />
+              Popular Categories
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+              Explore 500K+ products across 50+ categories
+            </h2>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8"
+          >
+            {categories.map((cat) => (
+              <Link
+                key={cat.name}
+                to="/products"
+                className="group card p-6 text-center hover:shadow-xl hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300"
+              >
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl mx-auto group-hover:scale-110 transition-transform duration-300">
+                  <div className={`rounded-xl ${cat.color} p-3`}>
+                    <cat.icon className="h-7 w-7 text-white" />
+                  </div>
+                </div>
+                <h3 className="font-semibold text-secondary-900 dark:text-secondary-50 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                  {cat.name}
+                </h3>
+                <p className="text-sm text-secondary-500 dark:text-secondary-400">{cat.count} products</p>
+              </Link>
+            ))}
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mt-12 text-center"
+          >
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-2 btn btn-outline text-lg px-8"
+            >
+              View All Categories
+              <ChevronRight className="h-5 w-5" />
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section className="px-4 py-24 sm:py-32 bg-secondary-50 dark:bg-secondary-950">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-16 text-center"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-4 py-1.5 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              <Star className="h-4 w-4" />
+              Trusted by Millions
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+              What our customers & sellers say
+            </h2>
+            <p className="mt-4 mx-auto max-w-2xl text-lg text-secondary-600 dark:text-secondary-300">
+              Real stories from real users who&apos;ve grown their business or found amazing deals on TRADENEST.
+            </p>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-8 md:grid-cols-3"
+          >
+            {testimonials.map((testimonial) => (
+              <motion.article
+                key={testimonial.name}
+                variants={itemVariants}
+                className="card p-6 hover:shadow-xl transition-shadow"
+              >
+                <div className="mb-4 flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, j) => (
+                    <Star
+                      key={j}
+                      className={`h-5 w-5 ${j < testimonial.rating ? 'fill-yellow-400 text-yellow-400' : 'text-secondary-200 dark:text-secondary-700'}`}
+                    />
+                  ))}
+                </div>
+                <p className="mb-6 text-secondary-600 dark:text-secondary-300 leading-relaxed">
+                  "{testimonial.text}"
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-primary-700 font-bold text-lg dark:bg-primary-900/30 dark:text-primary-300">
+                    {testimonial.avatar}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-secondary-900 dark:text-secondary-50">
+                      {testimonial.name}
+                    </div>
+                    <div className="text-sm text-secondary-500 dark:text-secondary-400">
+                      {testimonial.role}
+                    </div>
+                    {testimonial.verified && (
+                      <div className="flex items-center gap-1 mt-1 text-xs text-green-600 dark:text-green-400">
+                        <CheckCircle className="h-3 w-3" />
+                        Verified User
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.article>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Trust Badges Section */}
+      <section className="px-4 py-16 bg-white dark:bg-secondary-900 border-y border-secondary-200 dark:border-secondary-800">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+          >
+            {trustBadges.map((badge) => (
+              <motion.div
+                key={badge.title}
+                variants={itemVariants}
+                className="flex flex-col items-center text-center p-4"
+              >
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                  <badge.icon className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-secondary-900 dark:text-secondary-50">
+                  {badge.title}
+                </h3>
+                <p className="text-sm text-secondary-600 dark:text-secondary-400">{badge.desc}</p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* CTA Section - For Buyers */}
+      <section className="px-4 py-24 sm:py-32 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900">
+        <div className="mx-auto max-w-7xl text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-auto max-w-3xl"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-1.5 text-sm font-medium text-white">
+              <Zap className="h-4 w-4" />
+              For Shoppers
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-white sm:text-4xl">
+              Ready to shop smarter?
+            </h2>
+            <p className="mt-4 text-lg text-primary-100">
+              Join millions of smart shoppers. Get personalized recommendations, 
+              exclusive deals, price alerts, and hassle-free returns.
+            </p>
+            <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <Link
+                to="/products"
+                className="group btn bg-white text-primary-600 hover:bg-primary-50 px-10 py-3 text-lg gap-2"
+              >
+                Start Shopping Free
+                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/register"
+                className="group btn border-2 border-white text-white hover:bg-white/10 px-10 py-3 text-lg"
+              >
+                Create Account
+              </Link>
+            </div>
+            <p className="mt-6 text-sm text-primary-200">
+              No credit card required &bull; Free returns within 7 days &bull; Cancel anytime
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* CTA Section - For Sellers */}
+      <section className="px-4 py-24 sm:py-32 bg-gradient-to-br from-secondary-900 via-secondary-800 to-secondary-900">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-auto max-w-3xl"
+          >
+            <div className="rounded-3xl bg-white/5 p-8 sm:p-12 border border-white/10">
+              <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:justify-between sm:text-left">
+                <div className="mb-6 sm:mb-0 sm:mr-8">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-primary-500/20 px-4 py-1.5 text-sm font-medium text-primary-400 mb-4">
+                    <Package className="h-4 w-4" />
+                    For Sellers
+                  </span>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    Start & scale your online business
+                  </h2>
+                  <p className="mt-3 text-lg text-secondary-300 max-w-xl">
+                    Zero setup fees, pay only when you sell. Access 2.5M+ buyers, 
+                    AI-powered inventory insights, automated marketing, and dedicated seller support.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center gap-4 w-full sm:w-auto">
+                  <Link
+                    to="/register"
+                    className="group w-full btn btn-primary text-lg px-10 py-3 gap-2 justify-center"
+                  >
+                    Start Selling Free
+                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="w-full btn btn-outline border-white/30 text-white hover:bg-white/10 text-lg px-10 py-3 justify-center"
+                  >
+                    Learn More About Selling
+                  </Link>
+                </div>
+              </div>
+
+              {/* Seller Benefits Grid */}
+              <div className="mt-12 grid gap-6 sm:grid-cols-3">
+                {[
+                  { icon: Users, title: '2.5M+ Buyers', desc: 'Instant access to millions' },
+                  { icon: BarChart3, title: 'AI Analytics', desc: 'Smart inventory insights' },
+                  { icon: Globe, title: 'Pan-India Reach', desc: 'Sell across 19K+ pin codes' },
+                  { icon: Shield, title: 'Seller Protection', desc: 'Fraud & return protection' },
+                  { icon: Smartphone, title: 'Mobile App', desc: 'Manage on the go' },
+                  { icon: CreditCard, title: 'Fast Payouts', desc: 'T+2 settlement cycle' },
+                ].map((benefit) => (
+                  <motion.div
+                    key={benefit.title}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * i }}
+                    className="flex flex-col items-center text-center p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-500/20 text-primary-400">
+                      <benefit.icon className="h-6 w-6" />
+                    </div>
+                    <h4 className="font-semibold text-white">{benefit.title}</h4>
+                    <p className="text-sm text-secondary-400">{benefit.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Newsletter Section */}
+      <section className="px-4 py-24 sm:py-32 bg-white dark:bg-secondary-900">
+        <div className="mx-auto max-w-7xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-auto max-w-3xl text-center"
+          >
+            <h2 className="text-3xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-4xl">
+              Stay updated with the latest deals & trends
+            </h2>
+            <p className="mt-4 text-lg text-secondary-600 dark:text-secondary-300">
+              Get exclusive offers, new arrival alerts, and shopping tips delivered straight to your inbox.
+            </p>
+            <form className="mt-8 flex flex-col items-center gap-4 sm:flex-row" onSubmit={(e) => e.preventDefault()}>
+              <div className="relative w-full max-w-md">
+                <input
+                  type="email"
+                  placeholder="Enter your email address"
+                  className="input pr-12"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-primary text-sm px-4"
+                >
+                  Subscribe
+                </button>
+              </div>
+              <p className="text-sm text-secondary-500 dark:text-secondary-400 text-center sm:text-left w-full sm:w-auto">
+                By subscribing, you agree to our{" "}
+                <a href="/privacy" className="text-primary-600 hover:underline">Privacy Policy</a>
+                {" "}and{" "}
+                <a href="/terms" className="text-primary-600 hover:underline">Terms of Service</a>
+              </p>
+            </form>
+            <p className="mt-6 text-sm text-secondary-500 dark:text-secondary-400">
+              Join 500K+ subscribers &bull; No spam, unsubscribe anytime
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Footer CTA */}
+      <section className="px-4 py-16 bg-secondary-50 dark:bg-secondary-950 border-t border-secondary-200 dark:border-secondary-800">
+        <div className="mx-auto max-w-7xl text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h3 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50 sm:text-3xl">
+              Have questions? We&apos;re here to help.
+            </h3>
+            <p className="mt-3 text-secondary-600 dark:text-secondary-400">
+              Our support team is available 24/7 via chat, email, and phone.
+            </p>
+            <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <Link to="/help" className="btn btn-primary px-8">
+                Help Center
+              </Link>
+              <Link to="/contact" className="btn btn-outline px-8">
+                Contact Us
+              </Link>
+              <Link to="/seller-guide" className="btn btn-outline px-8">
+                Seller Guide
+              </Link>
+            </div>
+          </motion.div>
+        </div>
       </section>
     </div>
   )

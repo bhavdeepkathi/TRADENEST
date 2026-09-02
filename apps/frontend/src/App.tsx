@@ -1,5 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { useAppSelector } from './app/hooks'
 import Layout from './components/Layout'
 import Home from './features/catalog/pages/Home'
 import ProductList from './features/catalog/pages/ProductList'
@@ -13,35 +14,63 @@ import Orders from './features/orders/pages/Orders'
 import WishlistPage from './features/wishlist/pages/WishlistPage'
 import NotFound from './components/NotFound'
 
+function PageTransition() {
+  return (
+    <motion.div
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={{
+        initial: { opacity: 0 },
+        animate: { opacity: 1, transition: { duration: 0.2 } },
+        exit: { opacity: 0, transition: { duration: 0.1 } },
+      }}
+      className="min-h-screen"
+    >
+      <Outlet />
+    </motion.div>
+  )
+}
+
+function ProtectedRoute() {
+  const location = useLocation()
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated)
+
+  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace state={{ from: location }} />
+}
+
+function GuestRoute() {
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated)
+
+  return isAuthenticated ? <Navigate to="/" replace /> : <Outlet />
+}
+
 function App() {
   return (
-    <Layout>
-      <motion.div
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        variants={{
-          initial: { opacity: 0 },
-          animate: { opacity: 1, transition: { duration: 0.2 } },
-          exit: { opacity: 0, transition: { duration: 0.1 } },
-        }}
-        className="min-h-screen"
-      >
-        <Routes>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route element={<PageTransition />}>
           <Route path="/" element={<Home />} />
           <Route path="/products" element={<ProductList />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/wishlist" element={<WishlistPage />} />
+
+          <Route element={<GuestRoute />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+          </Route>
+
+          <Route element={<ProtectedRoute />}>
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/wishlist" element={<WishlistPage />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
-        </Routes>
-      </motion.div>
-    </Layout>
+        </Route>
+      </Route>
+    </Routes>
   )
 }
 

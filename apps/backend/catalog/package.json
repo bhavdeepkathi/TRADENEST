@@ -16,8 +16,8 @@
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@tradenest/common": "workspace:*",
-    "@prisma/client": "^5.9.0",
+    "@tradenest/common": "*",
+    "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",

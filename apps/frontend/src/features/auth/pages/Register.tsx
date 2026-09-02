@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -27,6 +27,7 @@ type RegisterForm = z.infer<typeof registerSchema>
 
 export default function Register() {
   const navigate = useNavigate()
+  const location = useLocation()
   const dispatch = useAppDispatch()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -56,7 +57,8 @@ export default function Register() {
         refreshToken: 'mock-refresh-token',
       }))
       toast.success('Account created successfully!')
-      navigate('/')
+      const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
+      navigate(`${from?.pathname ?? '/'}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
     } catch {
       toast.error('Registration failed')
     } finally {

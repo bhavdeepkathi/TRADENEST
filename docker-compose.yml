@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 services:
   postgres:
     image: postgres:15-alpine
@@ -8,39 +8,32 @@ services:
       POSTGRES_USER: tradenest
       POSTGRES_PASSWORD: ${DB_PASSWORD:-tradenest_dev}
     volumes:
-    - postgres_data:/var/lib/postgresql/data
-    - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
-    - 5432:5432
+      - "5432:5432"
     healthcheck:
-      test:
-      - CMD-SHELL
-      - pg_isready -U tradenest -d tradenest
+      test: ["CMD-SHELL", "pg_isready -U tradenest -d tradenest"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-    - tradenest-network
+      - tradenest-network
   redis:
     image: redis:7-alpine
     container_name: tradenest-redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_dev}
     volumes:
-    - redis_data:/data
+      - redis_data:/data
     ports:
-    - 6379:6379
+      - "6379:6379"
     healthcheck:
-      test:
-      - CMD
-      - redis-cli
-      - --raw
-      - incr
-      - ping
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-    - tradenest-network
+      - tradenest-network
   minio:
     image: minio/minio:latest
     container_name: tradenest-minio
@@ -49,244 +42,57 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
-    - minio_data:/data
+      - minio_data:/data
     ports:
-    - 9000:9000
-    - 9001:9001
+      - "9000:9000"
+      - "9001:9001"
     healthcheck:
-      test:
-      - CMD
-      - curl
-      - -f
-      - http://localhost:9000/minio/health/live
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
     networks:
-    - tradenest-network
+      - tradenest-network
   mailhog:
     image: mailhog/mailhog:latest
     container_name: tradenest-mailhog
     ports:
-    - 1025:1025
-    - 8025:8025
+      - "1025:1025"
+      - "8025:8025"
     networks:
-    - tradenest-network
-  gateway:
-    build:
-      context: ./apps/backend/gateway
-      dockerfile: Dockerfile
-      target: builder
-    container_name: tradenest-gateway
-    ports:
-    - 4000:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - CORS_ORIGIN=http://localhost:3000
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production-min-32-chars}
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - AUTH_SERVICE_URL=http://backend-auth:4000
-    - CATALOG_SERVICE_URL=http://backend-catalog:4000
-    - ORDER_SERVICE_URL=http://backend-order:4000
-    - PAYMENT_SERVICE_URL=http://backend-payment:4000
-    - AI_SERVICE_URL=http://backend-ai:4000
-    - NOTIFICATION_SERVICE_URL=http://backend-notification:4000
-    - LOG_LEVEL=debug
-    depends_on:
-      redis:
-        condition: service_healthy
-      backend-auth:
-        condition: service_started
-      backend-catalog:
-        condition: service_started
-      backend-order:
-        condition: service_started
-      backend-payment:
-        condition: service_started
-      backend-ai:
-        condition: service_started
-      backend-notification:
-        condition: service_started
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/gateway:/app
-    - /app/node_modules
+      - tradenest-network
   frontend:
     build:
       context: ./apps/frontend
       dockerfile: Dockerfile
     container_name: tradenest-frontend
     ports:
-    - 3000:80
+      - "3000:80"
     environment:
-    - VITE_API_URL=http://localhost:4000/api
+      - VITE_API_URL=http://localhost:4000/api
     depends_on:
-    - gateway
+      - backend-gateway
     networks:
-    - tradenest-network
+      - tradenest-network
   backend-auth:
     build:
       context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/auth'
+      dockerfile: ./apps/backend/auth/Dockerfile
     container_name: tradenest-auth
     ports:
-    - 4001:4000
+      - "4001:4000"
     environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/auth:/app
-    - /app/node_modules
-  backend-catalog:
-    build:
-      context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/catalog'
-    container_name: tradenest-catalog
-    ports:
-    - 4002:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/catalog:/app
-    - /app/node_modules
-  backend-order:
-    build:
-      context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/order'
-    container_name: tradenest-order
-    ports:
-    - 4003:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/order:/app
-    - /app/node_modules
-  backend-payment:
-    build:
-      context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/payment'
-    container_name: tradenest-payment
-    ports:
-    - 4004:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
-    - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
-    - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/payment:/app
-    - /app/node_modules
-  backend-ai:
-    build:
-      context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/ai'
-    container_name: tradenest-ai
-    ports:
-    - 4005:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    - AI_MODEL_ENDPOINT=${AI_MODEL_ENDPOINT}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - tradenest-network
-    volumes:
-    - ./apps/backend/ai:/app
-    - /app/node_modules
-  backend-notification:
-    build:
-      context: .
-      dockerfile: Dockerfile.pnpm
-      args:
-        SERVICE_NAME: '@tradenest/notification'
-    container_name: tradenest-notification
-    ports:
-    - 4006:4000
-    environment:
-    - NODE_ENV=development
-    - PORT=4000
-    - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
-    - REDIS_URL=redis://:redis_dev@redis:6379
-    - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
-    - CORS_ORIGIN=http://localhost:3000
-    - LOG_LEVEL=debug
-    - SMTP_HOST=mailhog
-    - SMTP_PORT=1025
-    - EMAIL_FROM=noreply@tradenest.local
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-secret-refresh-min-32-chars-change}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - EMAIL_FROM=noreply@tradenest.local
     depends_on:
       postgres:
         condition: service_healthy
@@ -295,14 +101,180 @@ services:
       mailhog:
         condition: service_started
     networks:
-    - tradenest-network
+      - tradenest-network
     volumes:
-    - ./apps/backend/notification:/app
-    - /app/node_modules
+      - ./apps/backend/auth:/app
+      - /app/node_modules
+  backend-catalog:
+    build:
+      context: .
+      dockerfile: ./apps/backend/catalog/Dockerfile
+    container_name: tradenest-catalog
+    ports:
+      - "4002:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/catalog:/app
+      - /app/node_modules
+  backend-order:
+    build:
+      context: .
+      dockerfile: ./apps/backend/order/Dockerfile
+    container_name: tradenest-order
+    ports:
+      - "4003:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/order:/app
+      - /app/node_modules
+  backend-payment:
+    build:
+      context: .
+      dockerfile: ./apps/backend/payment/Dockerfile
+    container_name: tradenest-payment
+    ports:
+      - "4004:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/payment:/app
+      - /app/node_modules
+  backend-ai:
+    build:
+      context: .
+      dockerfile: ./apps/backend/ai/Dockerfile
+    container_name: tradenest-ai
+    ports:
+      - "4005:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+      - AI_MODEL_ENDPOINT=${AI_MODEL_ENDPOINT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/ai:/app
+      - /app/node_modules
+  backend-notification:
+    build:
+      context: .
+      dockerfile: ./apps/backend/notification/Dockerfile
+    container_name: tradenest-notification
+    ports:
+      - "4006:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://tradenest:tradenest_dev@postgres:5432/tradenest
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - EMAIL_FROM=noreply@tradenest.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/notification:/app
+      - /app/node_modules
+  backend-gateway:
+    build:
+      context: .
+      dockerfile: ./apps/backend/gateway/Dockerfile
+    container_name: tradenest-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - CORS_ORIGIN=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-secret-refresh-min-32-chars-change}
+      - LOG_LEVEL=debug
+      - REDIS_URL=redis://:redis_dev@redis:6379
+      - AUTH_SERVICE_URL=http://backend-auth:4000
+      - CATALOG_SERVICE_URL=http://backend-catalog:4000
+      - ORDER_SERVICE_URL=http://backend-order:4000
+      - PAYMENT_SERVICE_URL=http://backend-payment:4000
+      - AI_SERVICE_URL=http://backend-ai:4000
+      - NOTIFICATION_SERVICE_URL=http://backend-notification:4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradenest-network
+    volumes:
+      - ./apps/backend/gateway:/app
+      - /app/node_modules
 volumes:
-  postgres_data: null
-  redis_data: null
-  minio_data: null
+  postgres_data:
+  redis_data:
+  minio_data:
 networks:
   tradenest-network:
     driver: bridge
+
