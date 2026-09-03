@@ -1,0 +1,65 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: tradenest-chaos
+  namespace: tradenest-prod
+spec:
+  appinfo:
+    appns: tradenest-prod
+    applabel: "app.kubernetes.io/name=catalog"
+  chaosServiceAccount: litmus-admin
+  monitoring: true
+  jobCleanUpPolicy: "delete"
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '30'
+            - name: CHAOS_INTERVAL
+              value: '10'
+            - name: FORCE
+              value: 'false'
+    - name: container-kill
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '30'
+            - name: CHAOS_INTERVAL
+              value: '10'
+    - name: pod-network-latency
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '60'
+            - name: CHAOS_INTERVAL
+              value: '10'
+            - name: NETWORK_LATENCY
+              value: '2000'
+            - name: JITTER
+              value: '500'
+    - name: pod-cpu-hog
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '60'
+            - name: CHAOS_INTERVAL
+              value: '10'
+            - name: CPU_CORES
+              value: '1'
+    - name: pod-memory-hog
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '60'
+            - name: CHAOS_INTERVAL
+              value: '10'
+            - name: MEMORY_CONSUMPTION
+              value: '500'
+            - name: MEMORY_UNIT
+              value: 'MiB'

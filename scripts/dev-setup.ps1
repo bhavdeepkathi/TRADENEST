@@ -30,9 +30,13 @@ docker-compose up -d postgres redis minio mailhog
 Write-Host "⏳ Waiting for services to be ready..." -ForegroundColor Yellow
 Start-Sleep -Seconds 15
 
-# Run migrations
-Write-Host "🔄 Running database migrations..." -ForegroundColor Yellow
-npm run db:migrate
+# Apply the schema. This repository does not include Prisma migration files,
+# so migrate dev cannot initialize a fresh local database.
+Write-Host "🔄 Applying database schema..." -ForegroundColor Yellow
+npm run db:push
+if ($LASTEXITCODE -ne 0) {
+    throw "Database schema setup failed"
+}
 
 # Seed database
 Write-Host "🌱 Seeding database..." -ForegroundColor Yellow

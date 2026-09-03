@@ -16,7 +16,7 @@ Write-Host "Node.js: $nodeVersion" -ForegroundColor Green
 # Check if PostgreSQL is running
 Write-Host "Checking PostgreSQL..." -ForegroundColor Yellow
 try {
-    $pgResult = & pg_isready -U tradenest -d tradenest -h localhost -p 5432 -q
+    $pgResult = & pg_isready -U tradenest -d tradenest -h localhost -p 5433 -q
     if ($LASTEXITCODE -eq 0) {
         Write-Host "PostgreSQL: Running" -ForegroundColor Green
     } else {
@@ -42,6 +42,22 @@ try {
 Write-Host ""
 Write-Host "Starting services..." -ForegroundColor Cyan
 
+$root = $PSScriptRoot
+if (-not $root) { $root = Get-Location }
+
+# The local compose database starts empty; create the Prisma tables before the
+# catalog service receives requests.
+Write-Host "Applying database schema..." -ForegroundColor Yellow
+Push-Location $root
+try {
+    npm run db:push
+    if ($LASTEXITCODE -ne 0) {
+        throw "Database schema setup failed"
+    }
+} finally {
+    Pop-Location
+}
+
 # Kill any existing node processes on our ports
 $ports = @(4000, 4001, 4002, 4003, 4004, 4005, 4006, 3000)
 foreach ($port in $ports) {
@@ -64,9 +80,6 @@ $services = @(
 )
 
 $processes = @()
-
-$root = $PSScriptRoot
-if (-not $root) { $root = Get-Location }
 
 foreach ($svc in $services) {
     $path = Join-Path $root $svc.path
