@@ -10,7 +10,7 @@ export default function WishlistPage() {
   const dispatch = useAppDispatch()
   const [addToCart] = useAddToCartMutation()
   const wishlistProductIds = useAppSelector((state) => state.wishlist.productIds)
-  const { data: productsResponse, isLoading } = useGetProductsQuery({ page: 1, limit: 100 })
+  const { data: productsResponse, isLoading } = useGetProductsQuery({ page: 1, limit: 1000 })
 
   if (isLoading) {
     return (

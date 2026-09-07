@@ -34,12 +34,12 @@ async function bootstrap() {
   const limiter = rateLimit({
     windowMs: gatewayConfig.RATE_LIMIT_WINDOW_MS,
     max: gatewayConfig.RATE_LIMIT_MAX_REQUESTS,
-    skip: (req) => gatewayConfig.NODE_ENV === 'development' && ['127.0.0.1', '::1'].includes(req.ip),
+    skip: (req) => gatewayConfig.NODE_ENV === 'development' && ['127.0.0.1', '::1'].includes(req.ip || ''),
     message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
     store: new RedisStore({
-      sendCommand: (...args: string[]) => redis.call(...args),
+      sendCommand: (...args: string[]) => redis.call.apply(redis, args as any) as any,
     }),
     keyGenerator: (req) => `gateway:${req.ip}`,
   });

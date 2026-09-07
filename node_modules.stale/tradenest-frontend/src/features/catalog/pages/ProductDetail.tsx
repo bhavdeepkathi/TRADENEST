@@ -3,16 +3,19 @@ import { useParams, Link } from 'react-router-dom'
 import { Star, Truck, Shield, RotateCcw, Heart, ShoppingCart, Minus, Plus, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { clsx } from 'clsx'
+import toast from 'react-hot-toast'
 import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
-import { useGetProductQuery } from '../../../app/api'
+import { useAddToCartMutation, useGetProductQuery } from '../../../app/api'
 
 export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>()
   const dispatch = useAppDispatch()
   const cartItems = useAppSelector((s) => s.cart.items)
   const wishlistIds = useAppSelector((s) => s.wishlist.productIds)
+  const accessToken = useAppSelector((s) => s.auth.accessToken)
+  const [addToCart] = useAddToCartMutation()
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   
@@ -28,9 +31,19 @@ export default function ProductDetail() {
   const isInWishlist = product ? wishlistIds.includes(product.id) : false
   const inCart = product ? cartItems.find((i) => i.productId === product.id) : undefined
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (product) {
+      if (accessToken) {
+        try {
+          await addToCart({ productId: product.id, quantity }).unwrap()
+          toast.success('Added to cart')
+        } catch {
+          toast.error('Unable to add this product to cart')
+        }
+        return
+      }
       dispatch(addItem({ productId: product.id, quantity }))
+      toast.success('Added to cart')
     }
   }
 

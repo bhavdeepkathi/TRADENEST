@@ -48,6 +48,13 @@ const serviceRoutes: ServiceRoute[] = [
     authRequired: true,
   },
   {
+    path: '/api/cart',
+    target: gatewayConfig.ORDER_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { '^/api/cart': '/api/cart' },
+    authRequired: true,
+  },
+  {
     path: '/api/payments',
     target: gatewayConfig.PAYMENT_SERVICE_URL,
     changeOrigin: true,
@@ -108,8 +115,14 @@ export function createProxyMiddlewareForService(route: ServiceRoute) {
         }
       }
       // Forward original IP
-      proxyReq.setHeader('x-forwarded-for', req.ip);
+      proxyReq.setHeader('x-forwarded-for', req.ip || '');
       proxyReq.setHeader('x-forwarded-proto', req.protocol);
+
+      if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        const body = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
+        proxyReq.write(body);
+      }
     },
     timeout: 30000,
     proxyTimeout: 30000,

@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 import { orderRouter } from './modules/order/order.routes';
+import { cartRouter } from './modules/cart/cart.routes';
 import { healthRouter } from './modules/health/health.routes';
 import { connectRedis } from './utils/redis';
 import { prisma } from './utils/prisma';
@@ -35,6 +36,7 @@ async function bootstrap() {
 
   app.use('/health', healthRouter);
   app.use('/api/orders', orderRouter);
+  app.use('/api/cart', cartRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

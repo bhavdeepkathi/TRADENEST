@@ -6,15 +6,17 @@ import { removeItem, updateQuantity, clearCart, setCartItems } from '../cartSlic
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { useEffect } from 'react'
-import { useGetCartQuery, useUpdateCartItemMutation, useRemoveFromCartMutation, useClearCartMutation } from '../../../app/api'
+import { useGetCartQuery, useGetProductsQuery, useUpdateCartItemMutation, useRemoveFromCartMutation, useClearCartMutation } from '../../../app/api'
 
 export default function CartPage() {
   const dispatch = useAppDispatch()
   const localItems = useAppSelector((s) => s.cart.items)
+  const accessToken = useAppSelector((s) => s.auth.accessToken)
   const [updateCartItem] = useUpdateCartItemMutation()
   const [removeFromCart] = useRemoveFromCartMutation()
   const [clearCartApi] = useClearCartMutation()
-  const { data: cart, isLoading, error, refetch } = useGetCartQuery()
+  const { data: cart, isLoading, error, refetch } = useGetCartQuery(undefined, { skip: !accessToken })
+  const { data: localProducts } = useGetProductsQuery({ page: 1, limit: 1000 }, { skip: !!accessToken })
 
   // Sync local cart with server cart on load
   useEffect(() => {
@@ -23,18 +25,12 @@ export default function CartPage() {
     }
   }, [cart, isLoading, dispatch])
 
-  const cartItems = cart?.items || localItems.map(item => ({
-    ...item,
-    product: {
-      id: item.productId,
-      title: '',
-      price: 0,
-      mrp: null,
-      images: [],
-    }
-  }))
+  const displayItems: any[] = cart?.items || localItems.flatMap((item) => {
+    const product = localProducts?.data.find((candidate) => candidate.id === item.productId)
+    return product ? [{ ...item, id: item.productId, product, subtotal: product.price * item.quantity }] : []
+  })
 
-  const subtotal = cart?.subtotal || 0
+  const subtotal = cart?.subtotal ?? displayItems.reduce((sum, item) => sum + item.subtotal, 0)
   const shipping = subtotal > 499 ? 0 : 99
   const total = subtotal + shipping
 
@@ -85,6 +81,10 @@ export default function CartPage() {
   const handleUpdateQuantity = async (productId: string, quantity: number) => {
     if (quantity < 1) return
     try {
+      if (!accessToken) {
+        dispatch(updateQuantity({ productId, quantity }))
+        return
+      }
       await updateCartItem({ productId, quantity }).unwrap()
       dispatch(updateQuantity({ productId, quantity }))
       await refetch()
@@ -95,6 +95,10 @@ export default function CartPage() {
 
   const handleRemoveItem = async (productId: string) => {
     try {
+      if (!accessToken) {
+        dispatch(removeItem(productId))
+        return
+      }
       await removeFromCart(productId).unwrap()
       dispatch(removeItem(productId))
       await refetch()
@@ -106,6 +110,10 @@ export default function CartPage() {
 
   const handleClearCart = async () => {
     try {
+      if (!accessToken) {
+        dispatch(clearCart())
+        return
+      }
       await clearCartApi().unwrap()
       dispatch(clearCart())
       await refetch()
@@ -123,7 +131,7 @@ export default function CartPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8 text-3xl font-bold text-secondary-900 dark:text-secondary-50"
         >
-          Shopping Cart ({cart?.items.length || 0})
+          Shopping Cart ({displayItems.length})
         </motion.h1>
 
         <div className="grid gap-8 lg:grid-cols-3">
@@ -138,7 +146,7 @@ export default function CartPage() {
               </div>
 
               <div className="divide-y divide-secondary-200 dark:divide-secondary-700">
-                {cart?.items.map((item, i) => (
+                {displayItems.map((item, i) => (
                   <motion.div
                     key={item.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -208,7 +216,7 @@ export default function CartPage() {
 
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-secondary-600 dark:text-secondary-400">Subtotal ({cart?.items.length || 0} items)</span>
+                  <span className="text-secondary-600 dark:text-secondary-400">Subtotal ({displayItems.length} items)</span>
                   <span className="font-medium text-secondary-900 dark:text-secondary-50">₹{subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
