@@ -28,6 +28,7 @@ async function bootstrap() {
   const limiter = rateLimit({
     windowMs: config.RATE_LIMIT_WINDOW_MS,
     max: config.RATE_LIMIT_MAX_REQUESTS,
+    skip: (req) => config.NODE_ENV === 'development' && ['127.0.0.1', '::1'].includes(req.ip),
     message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
   });
   app.use('/api/', limiter);

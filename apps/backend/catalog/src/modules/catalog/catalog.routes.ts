@@ -19,14 +19,17 @@ function validate(schema: z.ZodSchema) {
 // GET /api/products - List products with filters
 router.get('/', asyncHandler(async (req, res) => {
   const query = ProductQuerySchema.parse(req.query);
-  const { page, limit, sort, order, q, categoryId, sellerId, minPrice, maxPrice, rating, status, inStock } = query;
+  const { page, limit, sort, order, q, categoryId, sellerId, brand, subcategory, minPrice, maxPrice, rating, minDiscount, status, inStock } = query;
 
   const where: any = {};
   if (q) where.OR = [{ title: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
   if (categoryId) where.categoryId = categoryId;
   if (sellerId) where.sellerId = sellerId;
+  if (brand) where.brand = { contains: brand, mode: 'insensitive' };
+  if (subcategory) where.subcategory = { contains: subcategory, mode: 'insensitive' };
   if (minPrice || maxPrice) where.price = { ...(minPrice && { gte: minPrice }), ...(maxPrice && { lte: maxPrice }) };
   if (rating) where.ratingAvg = { gte: rating };
+  if (minDiscount !== undefined) where.discountPercent = { gte: minDiscount };
   if (status) where.status = status;
   else where.status = ProductStatus.ACTIVE;
 
@@ -34,7 +37,8 @@ router.get('/', asyncHandler(async (req, res) => {
     where.inventory = { quantity: { gt: 0 } };
   }
 
-  const orderBy: any = sort ? { [sort]: order } : { createdAt: 'desc' };
+  const sortField = ({ newest: 'createdAt', popular: 'reviewCount', rating: 'ratingAvg', discount: 'discountPercent', price: 'price' } as Record<string, string>)[sort || ''] || sort || 'createdAt';
+  const orderBy: any = { [sortField]: order };
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
@@ -55,8 +59,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // GET /api/products/:id - Get product detail
 router.get('/:id', asyncHandler(async (req, res) => {
-  const product = await prisma.product.findUnique({
-    where: { id: req.params.id },
+  const product = await prisma.product.findFirst({
+    where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
     include: {
       category: true,
       inventory: true,

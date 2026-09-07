@@ -122,8 +122,9 @@ export default function ProductDetail() {
           </div>
 
           <div>
-            <p className="mb-2 text-sm text-primary-600">{product.category.name}</p>
+            <p className="mb-2 text-sm text-primary-600">{product.category.name} / {product.subcategory}</p>
             <h1 className="mb-3 text-3xl font-bold text-secondary-900 dark:text-secondary-50">{product.title}</h1>
+            <p className="mb-4 text-sm font-medium text-secondary-500">Brand: {product.brand}</p>
 
             <div className="mb-4 flex items-center gap-3">
               <div className="flex items-center gap-1">

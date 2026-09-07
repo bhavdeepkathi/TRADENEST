@@ -164,6 +164,9 @@ export const ProductQuerySchema = PaginationQuerySchema.extend({
   q: z.string().optional(),
   categoryId: z.string().optional(),
   sellerId: z.string().optional(),
+  brand: z.string().optional(),
+  subcategory: z.string().optional(),
+  minDiscount: z.coerce.number().int().min(0).max(100).optional(),
   minPrice: z.coerce.number().positive().optional(),
   maxPrice: z.coerce.number().positive().optional(),
   rating: z.coerce.number().int().min(1).max(5).optional(),
@@ -175,12 +178,15 @@ export type ProductQuery = z.infer<typeof ProductQuerySchema>;
 
 export const CreateProductDtoSchema = z.object({
   title: z.string().min(3).max(200),
+  brand: z.string().min(1).max(100).default('TRADENEST'),
+  subcategory: z.string().min(1).max(100).default('General'),
   description: z.string().min(10).max(10000),
   price: z.number().positive().max(999999.99),
   mrp: z.number().positive().max(999999.99).optional(),
   categoryId: z.string().uuid(),
   tags: z.array(z.string().max(50)).max(20).default([]),
   images: z.array(z.string().url()).max(10).default([]),
+  discountPercent: z.number().int().min(0).max(100).default(0),
 });
 
 export type CreateProductDto = z.infer<typeof CreateProductDtoSchema>;

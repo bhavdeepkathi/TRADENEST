@@ -215,6 +215,9 @@ export default function ProductList() {
                     {product.title}
                   </h3>
                 </Link>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-primary-600">
+                  {product.brand} · {product.subcategory}
+                </p>
                 <div className="mb-2 flex items-center gap-2">
                   <span className="text-sm font-medium text-secondary-900 dark:text-secondary-50">★ {product.ratingAvg?.toFixed(1) || '4.5'}</span>
                   <span className="text-sm text-secondary-500">({product.reviewCount || 0})</span>

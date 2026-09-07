@@ -21,9 +21,12 @@ export const api = createApi({
         id: string
         title: string
         slug: string
+        brand: string
+        subcategory: string
         description: string
         price: number
         mrp: number | null
+        discountPercent: number
         images: string[]
         tags: string[]
         status: string
@@ -33,7 +36,7 @@ export const api = createApi({
         inventory: { quantity: number; reserved: number } | null
       }>
       meta: { page: number; limit: number; total: number; totalPages: number }
-    }, { page?: number; limit?: number; q?: string; categoryId?: string; minPrice?: number; maxPrice?: number; sort?: string; order?: string }>({
+    }, { page?: number; limit?: number; q?: string; categoryId?: string; brand?: string; subcategory?: string; minPrice?: number; maxPrice?: number; rating?: number; minDiscount?: number; inStock?: boolean; sort?: string; order?: string }>({
       query: (params) => ({
         url: '/products',
         params,
@@ -44,9 +47,12 @@ export const api = createApi({
       id: string
       title: string
       slug: string
+      brand: string
+      subcategory: string
       description: string
       price: number
       mrp: number | null
+      discountPercent: number
       images: string[]
       tags: string[]
       status: string
