@@ -4,7 +4,8 @@ import { serviceRoutes } from '../routes/proxy';
 
 export function createRouteAuthMiddleware() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const route = serviceRoutes.find(r => req.path.startsWith(r.path));
+    const requestPath = req.originalUrl.split('?')[0];
+    const route = serviceRoutes.find(r => requestPath.startsWith(r.path));
     
     if (!route) {
       // No matching route, let it pass through (will 404 later)

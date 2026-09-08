@@ -6,6 +6,13 @@ const PORT = 4000;
 app.use(cors());
 app.use(express.json());
 
+
+
+
+
+
+
+
 // Mock product data
 const mockProducts = [
   {
@@ -97,90 +104,102 @@ const mockProducts = [
     subcategory: "Laptops",
     brand: "ProBook",
     stock: 12
+  },
+  {
+    id: "4",
+    name: "UltraTech Gaming 15",
+    category: "Computers",
+    subcategory: "Laptops",
+    brand: "UltraTech",
+    description: "Gaming laptop with RTX 4070, 240Hz display, 32GB RAM, 1TB SSD.",
+    price: 129999,
+    originalPrice: 139999,
+    discount: 7,
+    rating: 4.6,
+    reviews: 187,
+    stock: 8,
+    image: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=800&h=800&fit=crop",
+    category: "Computers",
+    subcategory: "Laptops",
+    brand: "UltraTech",
+    description: "Gaming laptop with RTX 4070, 240Hz display, 32GB RAM, 1TB SSD.",
+    slug: "ultratech-gaming-15",
+    stock: 8,
+    rating: 4.6,
+    reviews: 187,
+    originalPrice: 139999,
+    discount: 7,
+    image: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=800&h=800&fit=crop",
+    category: "Computers",
+    subcategory: "Laptops",
+    brand: "UltraTech",
+    stock: 8
+  },
+  {
+    id: "5",
+    name: "SoundBeat Air Pro",
+    category: "Electronics",
+    subcategory: "Audio",
+    brand: "SoundBeat",
+    description: "True wireless earbuds with ANC, 30hr battery, IPX4 water resistance, and premium sound quality.",
+    price: 4999,
+    originalPrice: 6999,
+    discount: 28,
+    rating: 4.4,
+    reviews: 1234,
+    stock: 67,
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=800&fit=crop",
+    category: "Electronics",
+    subcategory: "Audio",
+    brand: "SoundBeat",
+    description: "True wireless earbuds with ANC, 30hr battery, IPX4 water resistance, and premium sound quality.",
+    slug: "soundbeat-air-pro",
+    stock: 67,
+    rating: 4.4,
+    reviews: 1234,
+    originalPrice: 6999,
+    discount: 28,
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=800&fit=crop",
+    category: "Electronics",
+    subcategory: "Audio",
+    brand: "SoundBeat",
+    stock: 67
   }
 ];
 
-const mockCategories = [
-  { id: "1", name: "Mobiles", slug: "mobiles", icon: "📱" },
-  { id: "2", name: "Electronics", slug: "electronics", icon: "💻" },
-  { id: "3", name: "Computers", slug: "computers", icon: "💻" },
-  { id: "4", name: "Appliances", slug: "appliances", icon: "❄️" },
-  { id: "5", name: "Fashion", slug: "fashion", icon: "👕" },
-  { id: "6", name: "Beauty", slug: "beauty", icon: "💄" },
-  { id: "7", name: "Home & Furniture", slug: "home-furniture", icon: "🏠" },
-  { id: "8", name: "Kitchen", slug: "kitchen", icon: "🍳" },
-  { id: "8", name: "Grocery", slug: "grocery", icon: "🛒" },
-  { id: "9", name: "Sports", slug: "sports", icon: "⚽" },
-  { id: "10", name: "Toys", slug: "toys", icon: "🧸" },
-  { id: "11", name: "Baby", slug: "baby", icon: "👶" },
-  { id: "11", name: "Books", slug: "books", icon: "📚" },
-  { id: "12", name: "Automotive", slug: "automotive", icon: "🚗" },
-  { id: "13", name: "Travel", slug: "travel", icon: "🧳" },
-  { id: "14", name: "Pet Care", slug: "pet", icon: "🐾" },
-  { id: "14", name: "Stationery", slug: "stationery", icon: "📝" },
-  { id: "15", name: "Gaming", slug: "gaming", icon: "🎮" },
-  { id: "16", name: "Jewellery", slug: "jewellery", icon: "💍" },
-  { id: "17", name: "Health", slug: "health", icon: "🏥" },
-  { id: "18", name: "Music", slug: "music", icon: "🎵" },
-  { id: "18", name: "Digital", slug: "digital", icon: "💻" },
-  { id: "19", name: "Gifting", slug: "gifting", icon: "🎁" },
-];
 
-const express = require("express");
-const cors = require("cors");
-const app = express();
-const PORT = 4000;
 
-app.use(cors());
-app.use(express.json());
 
-const mockProducts = []; // Products defined above
 
-const mockCategories = [
-  { id: "1", name: "Mobiles", slug: "mobiles", icon: "📱" },
-  { id: "2", name: "Electronics", slug: "electronics", icon: "💻" },
-  { id: "3", name: "Computers", slug: "computers", icon: "💻" },
-  { id: "4", name: "Appliances", slug: "appliances", icon: "❄️" },
-  { id: "5", name: "Fashion", slug: "fashion", icon: "👕" },
-  { id: "6", name: "Beauty", slug: "beauty", icon: "💄" },
-  { id: "7", name: "Home & Furniture", slug: "home-furniture", icon: "🏠" },
-  { id: "8", name: "Kitchen", slug: "kitchen", icon: "🍳" },
-  { id: "8", name: "Grocery", slug: "grocery", icon: "🛒" },
-  { id: "9", name: "Sports", slug: "sports", icon: "⚽" },
-  { id: "10", name: "Toys", slug: "toys", icon: "🧸" },
-  { id: "11", name: "Baby", slug: "baby", icon: "👶" },
-  { id: "11", name: "Books", slug: "books", icon: "📚" },
-  { id: "12", name: "Automotive", slug: "automotive", icon: "🚗" },
-  { id: "13", name: "Travel", slug: "travel", icon: "🧳" },
-  { id: "14", name: "Pet Care", slug: "pet", icon: "🐾" },
-  { id: "14", name: "Stationery", slug: "stationery", icon: "📝" },
-  { id: "15", name: "Gaming", slug: "gaming", icon: "🎮" },
-  { id: "16", name: "Jewellery", slug: "jewellery", icon: "💍" },
-  { id: "17", name: "Health", slug: "health", icon: "🏥" },
-  { id: "18", name: "Music", slug: "music", icon: "🎵" },
-  { id: "18", name: "Digital", slug: "digital", icon: "💻" },
-  { id: "19", name: "Gifting", slug: "gifting", icon: "🎁" },
-];
 
-const express = require("express");
-const cors = require("cors");
-const app = express();
-const PORT = 4000;
 
-app.use(cors());
-app.use(express.json());
 
-const mockProducts = []; // Products defined above
 
-const mockCategories = [/* categories defined above */];
 
-const express = require("express");
-const cors = require("cors");
-const app = express();
-const PORT = 4000;
 
-app.use(cors());
-app.use(express.json());
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Products API
 app.get("/api/products", (req, res) => {
@@ -260,7 +279,7 @@ app.get("/api/categories/:id", (req, res) => {
   res.json(category);
 );
 
-const PORT = 4000;
+
 app.listen(PORT, () => {
   console.log(`Mock API server running on http://localhost:${PORT}`);
   console.log("Endpoints:");
@@ -271,3 +290,6 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+
+

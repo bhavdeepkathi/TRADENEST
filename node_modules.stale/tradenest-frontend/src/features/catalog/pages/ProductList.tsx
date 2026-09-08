@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Filter, ChevronDown, Grid, List, Search } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { useGetProductsQuery, useGetCategoriesQuery } from '../../../app/api'
 
@@ -13,9 +13,14 @@ export default function ProductList() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [sort, searchQuery, selectedCategory, minPrice, maxPrice])
   
   const { data: productsResponse, isLoading, error } = useGetProductsQuery({
-    page: 1,
+    page: currentPage,
     limit: 20,
     sort: sort.split('_')[0],
     order: sort.split('_')[1],
@@ -202,7 +207,7 @@ export default function ProductList() {
             >
               <Link to={`/products/${product.slug}`} className="relative aspect-square overflow-hidden bg-secondary-100 dark:bg-secondary-800" style={{ flexShrink: 0, width: view === 'list' ? '200px' : '100%' }}>
                 <img src={product.images[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop'} alt={product.title} className="h-full w-full object-cover transition-transform hover:scale-105" loading="lazy" />
-                {product.mrp && product.mrp > product.price && (
+                {product.mrp && Number(product.mrp) > Number(product.price) && (
                   <span className="absolute top-2 left-2 rounded-full bg-red-500 px-2 py-0.5 text-xs font-medium text-white">
                     {Math.round(((product.mrp - product.price) / product.mrp) * 100)}% OFF
                   </span>
@@ -219,13 +224,13 @@ export default function ProductList() {
                   {product.brand} · {product.subcategory}
                 </p>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="text-sm font-medium text-secondary-900 dark:text-secondary-50">★ {product.ratingAvg?.toFixed(1) || '4.5'}</span>
+                  <span className="text-sm font-medium text-secondary-900 dark:text-secondary-50">★ {product.ratingAvg == null ? '4.5' : Number(product.ratingAvg).toFixed(1)}</span>
                   <span className="text-sm text-secondary-500">({product.reviewCount || 0})</span>
                 </div>
                 <div className="mt-auto flex items-center gap-2">
-                  <span className="text-xl font-bold text-secondary-900 dark:text-secondary-50">₹{product.price.toLocaleString()}</span>
-                  {product.mrp && product.mrp > product.price && (
-                    <span className="line-through text-sm text-secondary-400">₹{product.mrp.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-secondary-900 dark:text-secondary-50">₹{Number(product.price).toLocaleString()}</span>
+                  {product.mrp && Number(product.mrp) > Number(product.price) && (
+                    <span className="line-through text-sm text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
                   )}
                 </div>
               </div>
@@ -241,17 +246,29 @@ export default function ProductList() {
 
         {productsResponse && productsResponse.meta.totalPages > 1 && (
           <div className="mt-12 flex justify-center gap-2">
-            <button className="btn btn-outline" disabled={productsResponse.meta.page === 1}>Previous</button>
+            <button
+              className="btn btn-outline"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </button>
             {Array.from({ length: Math.min(5, productsResponse.meta.totalPages) }, (_, i) => i + 1).map((page) => (
               <button
                 key={page}
-                className={clsx('w-10', productsResponse.meta.page === page ? 'btn btn-primary' : 'btn btn-outline')}
-                disabled={productsResponse.meta.page === page}
+                className={clsx('w-10', currentPage === page ? 'btn btn-primary' : 'btn btn-outline')}
+                onClick={() => setCurrentPage(page)}
               >
                 {page}
               </button>
             ))}
-            <button className="btn btn-outline" disabled={productsResponse.meta.page === productsResponse.meta.totalPages}>Next</button>
+            <button
+              className="btn btn-outline"
+              onClick={() => setCurrentPage((page) => Math.min(productsResponse.meta.totalPages, page + 1))}
+              disabled={currentPage === productsResponse.meta.totalPages}
+            >
+              Next
+            </button>
           </div>
         )}
       </div>

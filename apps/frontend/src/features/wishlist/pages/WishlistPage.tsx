@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Heart, Trash2, ShoppingCart, Eye } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { toggle, clearWishlist } from '../wishlistSlice'
+import { addItem } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { useGetProductsQuery, useAddToCartMutation } from '../../../app/api'
 
@@ -10,6 +11,7 @@ export default function WishlistPage() {
   const dispatch = useAppDispatch()
   const [addToCart] = useAddToCartMutation()
   const wishlistProductIds = useAppSelector((state) => state.wishlist.productIds)
+  const accessToken = useAppSelector((state) => state.auth.accessToken)
   const { data: productsResponse, isLoading } = useGetProductsQuery({ page: 1, limit: 1000 })
 
   if (isLoading) {
@@ -68,11 +70,19 @@ export default function WishlistPage() {
   }
 
   const handleAddToCart = async (productId: string) => {
+    if (!accessToken) {
+      dispatch(addItem({ productId, quantity: 1 }))
+      toast.success('Added to cart')
+      return
+    }
+
     try {
       await addToCart({ productId, quantity: 1 }).unwrap()
+      dispatch(addItem({ productId, quantity: 1 }))
       toast.success('Added to cart')
     } catch (err) {
-      toast.error('Failed to add to cart')
+      dispatch(addItem({ productId, quantity: 1 }))
+      toast.success('Added to cart locally. Sign in again to sync your cart.')
     }
   }
 

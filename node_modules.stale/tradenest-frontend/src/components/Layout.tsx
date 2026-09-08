@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAppSelector } from '../app/hooks'
 import { logout } from '../features/auth/authSlice'
 import { useAppDispatch } from '../app/hooks'
+import { clearCart } from '../features/cart/cartSlice'
 import { Menu, X, ShoppingCart, Heart, User, LogOut, Sun, Moon, Facebook, Twitter, Instagram, Youtube as YouTube, Mail, Phone, MapPin, Truck, Shield, RefreshCw, Star } from 'lucide-react'
 import { useState } from 'react'
 import { clsx } from 'clsx'
@@ -78,7 +79,10 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
 
-  const handleLogout = () => dispatch(logout())
+  const handleLogout = () => {
+    dispatch(logout())
+    dispatch(clearCart())
+  }
 
   const toggleDark = () => {
     const next = !dark
@@ -101,18 +105,14 @@ export default function Layout() {
               <Link to="/products" className={clsx('text-sm font-medium transition-colors hover:text-primary-600', location.pathname.startsWith('/products') ? 'text-primary-600' : 'text-secondary-600 dark:text-secondary-300')}>
                 Products
               </Link>
-              {isAuthenticated && (
-                <>
-                  <Link to="/cart" className="relative text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
-                    <ShoppingCart className="h-5 w-5" />
-                    {cartCount > 0 && <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-xs text-white">{cartCount}</span>}
-                  </Link>
-                  <Link to="/wishlist" className="relative text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
-                    <Heart className="h-5 w-5" />
-                    {wishlistCount > 0 && <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">{wishlistCount}</span>}
-                  </Link>
-                </>
-              )}
+              <Link to="/cart" className="relative text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
+                <ShoppingCart className="h-5 w-5" />
+                {cartCount > 0 && <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-xs text-white">{cartCount}</span>}
+              </Link>
+              <Link to="/wishlist" className="relative text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
+                <Heart className="h-5 w-5" />
+                {wishlistCount > 0 && <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">{wishlistCount}</span>}
+              </Link>
             </div>
 
             <div className="flex items-center gap-4">
@@ -158,15 +158,19 @@ export default function Layout() {
             <div id="mobile-menu" className="md:hidden py-4 border-t border-secondary-200 dark:border-secondary-700">
               <div className="flex flex-col gap-4">
                 <Link to="/products" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Products</Link>
-                {isAuthenticated && (
-                  <>
-                    <Link to="/cart" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Cart ({cartCount})</Link>
-                    <Link to="/wishlist" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Wishlist ({wishlistCount})</Link>
+                <>
+                  <Link to="/cart" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Cart ({cartCount})</Link>
+                  <Link to="/wishlist" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Wishlist ({wishlistCount})</Link>
+                  {isAuthenticated && (
                     <Link to="/profile" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Profile</Link>
+                  )}
+                  {isAuthenticated && (
                     <Link to="/orders" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Orders</Link>
+                  )}
+                  {isAuthenticated && (
                     <button onClick={handleLogout} className="text-left text-sm font-medium text-secondary-600 dark:text-secondary-300">Logout</button>
-                  </>
-                )}
+                  )}
+                </>
                 {!isAuthenticated && (
                   <>
                     <Link to="/login" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Login</Link>

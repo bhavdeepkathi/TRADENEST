@@ -19,14 +19,11 @@ export default function ProductDetail() {
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   
-  // We need to fetch by ID, but we only have slug. 
-  // For now, we'll fetch all products and find by slug, or we could add a getProductBySlug endpoint
-  // Let's use a different approach - fetch product list and find matching slug
-  
-  // For simplicity, we'll use the slug as ID if it matches, otherwise we need a different approach
+  // The catalog endpoint accepts both the product ID and its unique slug.
   const { data: product, isLoading, error } = useGetProductQuery(slug || '', { 
     skip: !slug 
   })
+  const errorStatus = error && 'status' in error ? error.status : undefined
 
   const isInWishlist = product ? wishlistIds.includes(product.id) : false
   const inCart = product ? cartItems.find((i) => i.productId === product.id) : undefined
@@ -38,7 +35,8 @@ export default function ProductDetail() {
           await addToCart({ productId: product.id, quantity }).unwrap()
           toast.success('Added to cart')
         } catch {
-          toast.error('Unable to add this product to cart')
+          dispatch(addItem({ productId: product.id, quantity }))
+          toast.success('Added to cart locally. Sign in again to sync your cart.')
         }
         return
       }
@@ -80,9 +78,13 @@ export default function ProductDetail() {
   }
 
   if (error || !product) {
+    const isProductNotFound = !slug || errorStatus === 404
+
     return (
       <div className="px-4 py-16 text-center">
-        <p className="text-red-500">Product not found</p>
+        <p className="text-red-500">
+          {isProductNotFound ? 'Product not found' : 'Unable to load product. Please try again.'}
+        </p>
         <Link to="/products" className="mt-4 btn btn-primary inline-block">Browse Products</Link>
       </div>
     )
@@ -142,7 +144,7 @@ export default function ProductDetail() {
             <div className="mb-4 flex items-center gap-3">
               <div className="flex items-center gap-1">
                 <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                <span className="font-medium text-secondary-900 dark:text-secondary-50">{product.ratingAvg?.toFixed(1) || '4.5'}</span>
+                <span className="font-medium text-secondary-900 dark:text-secondary-50">{product.ratingAvg == null ? '4.5' : Number(product.ratingAvg).toFixed(1)}</span>
                 <span className="text-secondary-500">({product.reviewCount || 0} reviews)</span>
               </div>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -151,12 +153,12 @@ export default function ProductDetail() {
             </div>
 
             <div className="mb-6 flex items-baseline gap-3">
-              <span className="text-3xl font-bold text-secondary-900 dark:text-secondary-50">₹{product.price.toLocaleString()}</span>
-              {product.mrp && product.mrp > product.price && (
+              <span className="text-3xl font-bold text-secondary-900 dark:text-secondary-50">₹{Number(product.price).toLocaleString()}</span>
+              {product.mrp && Number(product.mrp) > Number(product.price) && (
                 <>
-                  <span className="line-through text-xl text-secondary-400">₹{product.mrp.toLocaleString()}</span>
+                  <span className="line-through text-xl text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
                   <span className="px-2 py-0.5 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                    {Math.round(((product.mrp - product.price) / product.mrp) * 100)}% OFF
+                    {Math.round(((Number(product.mrp) - Number(product.price)) / Number(product.mrp)) * 100)}% OFF
                   </span>
                 </>
               )}

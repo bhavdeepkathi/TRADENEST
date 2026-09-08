@@ -9,7 +9,25 @@ interface CartState {
   items: CartItem[]
 }
 
-const initialState: CartState = { items: [] }
+const CART_STORAGE_KEY = 'tradenest-cart'
+
+function loadCartItems(): CartItem[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const stored = window.localStorage.getItem(CART_STORAGE_KEY)
+    const items = stored ? JSON.parse(stored) : []
+    return Array.isArray(items) ? items.filter((item) => typeof item?.productId === 'string' && Number.isInteger(item?.quantity) && item.quantity > 0) : []
+  } catch {
+    return []
+  }
+}
+
+export function persistCartItems(items: CartItem[]) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+}
+
+const initialState: CartState = { items: loadCartItems() }
 
 const cartSlice = createSlice({
   name: 'cart',

@@ -47,7 +47,11 @@ async function bootstrap() {
   app.use(notFoundHandler);
   app.use(errorHandler);
 
-  await connectRedis();
+  try {
+    await connectRedis();
+  } catch (error) {
+    logger.error({ err: error }, 'Redis connection failed; continuing without Redis');
+  }
 
   try {
     await prisma.$queryRaw`SELECT 1`;

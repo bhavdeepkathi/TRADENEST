@@ -15,8 +15,8 @@ export default function CartPage() {
   const [updateCartItem] = useUpdateCartItemMutation()
   const [removeFromCart] = useRemoveFromCartMutation()
   const [clearCartApi] = useClearCartMutation()
-  const { data: cart, isLoading, error, refetch } = useGetCartQuery(undefined, { skip: !accessToken })
-  const { data: localProducts } = useGetProductsQuery({ page: 1, limit: 1000 }, { skip: !!accessToken })
+  const { data: cart, isLoading, refetch } = useGetCartQuery(undefined, { skip: !accessToken })
+  const { data: localProducts } = useGetProductsQuery({ page: 1, limit: 1000 })
 
   // Sync local cart with server cart on load
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function CartPage() {
     }
   }, [cart, isLoading, dispatch])
 
-  const displayItems: any[] = cart?.items || localItems.flatMap((item) => {
+  const displayItems: any[] = cart?.items?.length ? cart.items : localItems.flatMap((item) => {
     const product = localProducts?.data.find((candidate) => candidate.id === item.productId)
     return product ? [{ ...item, id: item.productId, product, subtotal: product.price * item.quantity }] : []
   })
@@ -55,7 +55,7 @@ export default function CartPage() {
     )
   }
 
-  if (error || (!cart && localItems.length === 0)) {
+  if (displayItems.length === 0) {
     return (
       <div className="px-4 py-16">
         <motion.div

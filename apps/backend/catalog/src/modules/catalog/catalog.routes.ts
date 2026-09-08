@@ -64,7 +64,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     include: {
       category: true,
       inventory: true,
-      reviews: { take: 5, orderBy: { createdAt: 'desc' }, include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+      reviews: { take: 5, orderBy: { createdAt: 'desc' } },
     },
   });
   if (!product) throw new NotFoundError('Product');

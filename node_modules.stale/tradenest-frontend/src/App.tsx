@@ -54,6 +54,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/products" element={<ProductList />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
+          <Route path="/cart" element={<CartPage />} />
 
           <Route element={<GuestRoute />}>
             <Route path="/login" element={<Login />} />
@@ -61,12 +62,10 @@ function App() {
           </Route>
 
           <Route element={<ProtectedRoute />}>
-            <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/:id" element={<OrderDetail />} />
-            <Route path="/wishlist" element={<WishlistPage />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
