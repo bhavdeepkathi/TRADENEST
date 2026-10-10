@@ -15,6 +15,13 @@ export const api = createApi({
   }),
   tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment'],
   endpoints: (builder) => ({
+    login: builder.mutation<{
+      accessToken: string
+      refreshToken: string
+    }, { email: string; password: string }>({
+      query: (body) => ({ url: '/auth/login', method: 'POST', body }),
+    }),
+
     // Products
     getProducts: builder.query<{
       data: Array<{
@@ -285,6 +292,7 @@ export const api = createApi({
 })
 
 export const {
+  useLoginMutation,
   useGetProductsQuery,
   useGetProductQuery,
   useGetCategoriesQuery,

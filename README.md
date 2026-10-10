@@ -51,6 +51,11 @@ npm run db:seed
 # open http://localhost:3000
 ```
 
+To run the backend as local Node processes instead of in Docker, start PostgreSQL
+and Redis with `docker compose up -d postgres redis`, apply the schema with
+`npm run db:push`, then run `npm run dev:backend`. Start the frontend separately
+with `npm run dev:frontend`. The local backend services use ports 4000–4006.
+
 **Test accounts** (seeded):
 | Role | Email | Password |
 |------|-------|----------|

@@ -52,12 +52,18 @@ router.post('/items', asyncHandler(async (req, res) => {
 
   const product = await prisma.product.findUnique({ where: { id: productId }, include: { inventory: true } });
   if (!product || product.status !== 'ACTIVE') throw new ValidationError('Product is not available');
-  if (!product.inventory || product.inventory.quantity < quantity) throw new ValidationError('Insufficient stock');
 
   const cart = await prisma.cart.upsert({ where: { userId: id }, update: {}, create: { userId: id } });
+  const existingItem = await prisma.cartItem.findUnique({
+    where: { cartId_productId: { cartId: cart.id, productId } },
+  });
+  const requestedQuantity = (existingItem?.quantity ?? 0) + quantity;
+  if (!product.inventory || product.inventory.quantity - product.inventory.reserved < requestedQuantity) {
+    throw new ValidationError('Insufficient stock');
+  }
   const item = await prisma.cartItem.upsert({
     where: { cartId_productId: { cartId: cart.id, productId } },
-    update: { quantity },
+    update: { quantity: { increment: quantity } },
     create: { cartId: cart.id, productId, quantity },
   });
   res.status(201).json(item);

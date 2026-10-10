@@ -63,6 +63,12 @@ export function createAuthMiddleware(options?: {
 export const authMiddleware = createAuthMiddleware({ optional: false });
 export const optionalAuthMiddleware = createAuthMiddleware({ optional: true });
 
+// Debug middleware
+export function debugMiddleware(req: Request, res: Response, next: NextFunction): void {
+  console.log(`[DEBUG] ${req.method} ${req.path} - Auth header: ${req.headers.authorization || 'none'}`);
+  next();
+}
+
 export function requireRoles(...roles: string[]) {
   return createAuthMiddleware({ requiredRoles: roles });
 }

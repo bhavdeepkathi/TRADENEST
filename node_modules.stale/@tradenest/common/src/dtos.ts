@@ -298,7 +298,7 @@ export type WishlistResponse = z.infer<typeof WishlistResponseSchema>;
 // ===========================================
 
 export const CreateOrderDtoSchema = z.object({
-  shippingAddressId: z.string().uuid(),
+  shippingAddressId: z.string().min(1),
   paymentMethod: z.nativeEnum(PaymentProvider),
   couponCode: z.string().max(50).optional(),
 });
@@ -328,8 +328,8 @@ export const OrderResponseSchema = z.object({
   discount: z.number(),
   total: z.number(),
   couponCode: z.string().nullable(),
-  shippingAddress: z.record(z.any()),
-  billingAddress: z.record(z.any()),
+  shippingAddress: z.record(z.string(), z.any()),
+  billingAddress: z.record(z.string(), z.any()),
   items: z.array(OrderItemResponseSchema),
   payment: z.object({
     id: z.string(),
@@ -361,7 +361,7 @@ export type OrderQuery = z.infer<typeof OrderQuerySchema>;
 // ===========================================
 
 export const CreatePaymentIntentDtoSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: z.string().min(1),
   provider: z.nativeEnum(PaymentProvider),
 });
 
@@ -462,7 +462,7 @@ export const NotificationResponseSchema = z.object({
   type: z.nativeEnum(NotificationType),
   title: z.string(),
   body: z.string(),
-  data: z.record(z.any()).optional(),
+  data: z.record(z.string(), z.any()).optional(),
   read: z.boolean(),
   createdAt: z.date(),
 });

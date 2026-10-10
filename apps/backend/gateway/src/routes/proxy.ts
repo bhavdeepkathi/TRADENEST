@@ -96,14 +96,8 @@ export function createProxyMiddlewareForService(route: ServiceRoute) {
     target: route.target,
     changeOrigin: route.changeOrigin,
     pathRewrite: route.pathRewrite,
-    onError: (err, req, res) => {
-      console.error(`Proxy error for ${route.path}:`, err);
-      res.status(502).json({
-        code: 'BAD_GATEWAY',
-        message: 'Service temporarily unavailable',
-      });
-    },
-    onProxyReq: (proxyReq, req) => {
+    onProxyReq: (proxyReq: any, req: any) => {
+      console.log(`[Proxy] ${req.method} ${route.path} -> ${route.target}`);
       // Forward user info headers to downstream services
       if ((req as any).user) {
         const user = (req as any).user;
@@ -117,16 +111,29 @@ export function createProxyMiddlewareForService(route: ServiceRoute) {
       // Forward original IP
       proxyReq.setHeader('x-forwarded-for', req.ip || '');
       proxyReq.setHeader('x-forwarded-proto', req.protocol);
-
       if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
         const body = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Type', 'application/json');
         proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
         proxyReq.write(body);
       }
     },
+    onProxyRes: (proxyRes: any, req: any, res: any) => {
+      console.log(`[Proxy] Response: ${req.method} ${req.path} -> ${proxyRes.statusCode}`);
+    },
+    onError: (err: any, req: any, res: any, target: any) => {
+      console.error(`Proxy error for ${route.path}:`, err);
+      if (!res.headersSent) {
+        res.status(502).json({
+          code: 'BAD_GATEWAY',
+          message: 'Service temporarily unavailable',
+        });
+      }
+    },
     timeout: 30000,
     proxyTimeout: 30000,
-  });
+    selfHandleResponse: false,
+  } as any);
 }
 
 export { serviceRoutes };

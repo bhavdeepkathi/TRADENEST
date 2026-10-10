@@ -4,9 +4,10 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file=../../../.env ../../../scripts/dev-service.cjs 4001",
+    "predev": "npm run prisma:generate",
     "build": "tsc",
-    "prebuild": "npm run prisma:generate",    
+    "prebuild": "npm run prisma:generate",
     "start": "node dist/main.js",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
@@ -16,7 +17,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "npm run prisma:generate && tsx prisma/seed.ts"
   },
   "dependencies": {
     "@tradenest/common": "*",

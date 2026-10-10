@@ -1,18 +1,27 @@
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
-import { Filter, ChevronDown, Grid, List, Search } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Filter, ChevronDown, Grid, Heart, List, Search, ShoppingCart } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { useGetProductsQuery, useGetCategoriesQuery } from '../../../app/api'
+import toast from 'react-hot-toast'
+import { useGetProductsQuery, useGetCategoriesQuery, useAddToCartMutation } from '../../../app/api'
+import { useAppDispatch, useAppSelector } from '../../../app/hooks'
+import { addItem } from '../../cart/cartSlice'
+import { toggle } from '../../wishlist/wishlistSlice'
 
 export default function ProductList() {
+  const dispatch = useAppDispatch()
+  const [searchParams] = useSearchParams()
+  const accessToken = useAppSelector((state) => state.auth.accessToken)
+  const wishlistIds = useAppSelector((state) => state.wishlist.productIds)
+  const [addToCart] = useAddToCartMutation()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [sort, setSort] = useState('createdAt_desc')
   const [showFilters, setShowFilters] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '')
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
+  const [maxPrice, setMaxPrice] = useState(() => searchParams.get('maxPrice') || '')
   const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
@@ -33,6 +42,22 @@ export default function ProductList() {
   const { data: categories } = useGetCategoriesQuery()
 
   const products = productsResponse?.data || []
+
+  const handleAddToCart = async (productId: string) => {
+    if (!accessToken) {
+      dispatch(addItem({ productId, quantity: 1 }))
+      toast.success('Added to cart')
+      return
+    }
+
+    try {
+      await addToCart({ productId, quantity: 1 }).unwrap()
+      dispatch(addItem({ productId, quantity: 1 }))
+      toast.success('Added to cart')
+    } catch {
+      toast.error('Could not add this product to your cart. Please try again.')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -203,7 +228,7 @@ export default function ProductList() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
-              className={clsx('card overflow-hidden transition-all', view === 'list' ? 'flex flex-row' : 'flex flex-col')}
+              className={clsx('card relative overflow-hidden transition-all', view === 'list' ? 'flex flex-row' : 'flex flex-col')}
             >
               <Link to={`/products/${product.slug}`} className="relative aspect-square overflow-hidden bg-secondary-100 dark:bg-secondary-800" style={{ flexShrink: 0, width: view === 'list' ? '200px' : '100%' }}>
                 <img src={product.images[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop'} alt={product.title} className="h-full w-full object-cover transition-transform hover:scale-105" loading="lazy" />
@@ -213,6 +238,18 @@ export default function ProductList() {
                   </span>
                 )}
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  dispatch(toggle(product.id))
+                  toast.success(wishlistIds.includes(product.id) ? 'Removed from wishlist' : 'Added to wishlist')
+                }}
+                className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 text-red-500 shadow-lg transition-colors hover:bg-red-50"
+                aria-label={wishlistIds.includes(product.id) ? 'Remove from wishlist' : 'Add to wishlist'}
+                aria-pressed={wishlistIds.includes(product.id)}
+              >
+                <Heart className={clsx('h-5 w-5', wishlistIds.includes(product.id) && 'fill-current')} />
+              </button>
 
               <div className="flex flex-1 flex-col p-4" style={{ minWidth: 0 }}>
                 <Link to={`/products/${product.slug}`}>
@@ -233,6 +270,15 @@ export default function ProductList() {
                     <span className="line-through text-sm text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void handleAddToCart(product.id)}
+                  disabled={!product.inventory || product.inventory.quantity < 1}
+                  className="btn btn-primary mt-4 flex w-full items-center justify-center gap-2 text-sm"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Add to Cart
+                </button>
               </div>
             </motion.article>
           ))}

@@ -35,6 +35,12 @@ async function bootstrap() {
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  
+  // Debug middleware
+  app.use((req, res, next) => {
+    console.log(`[Catalog] ${req.method} ${req.path} - Body:`, req.body);
+    next();
+  });
 
   if (config.NODE_ENV !== 'test') {
     app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));

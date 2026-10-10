@@ -4,8 +4,10 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file=../../../.env ../../../scripts/dev-service.cjs 4004",
+    "predev": "npm run prisma:generate",
     "build": "tsc",
+    "prebuild": "npm run prisma:generate",
     "start": "node dist/main.js",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",

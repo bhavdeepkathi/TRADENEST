@@ -1,9 +1,9 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { api } from './api'
 import authReducer from '../features/auth/authSlice'
-import cartReducer from '../features/cart/cartSlice'
 import wishlistReducer from '../features/wishlist/wishlistSlice'
 import cartReducer, { persistCartItems } from '../features/cart/cartSlice'
+import { persistWishlistProductIds } from '../features/wishlist/wishlistSlice'
 
 export const store = configureStore({
   reducer: {
@@ -17,6 +17,7 @@ export const store = configureStore({
 })
 
 store.subscribe(() => persistCartItems(store.getState().cart.items))
+store.subscribe(() => persistWishlistProductIds(store.getState().wishlist.productIds))
 
 export type RootState = ReturnType<typeof store.getState>
 export type AppDispatch = typeof store.dispatch

@@ -12,15 +12,15 @@ const gatewayConfigSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   
   // Service URLs
-  AUTH_SERVICE_URL: z.string().url().default('http://localhost:4001'),
-  CATALOG_SERVICE_URL: z.string().url().default('http://localhost:4002'),
-  ORDER_SERVICE_URL: z.string().url().default('http://localhost:4003'),
-  PAYMENT_SERVICE_URL: z.string().url().default('http://localhost:4004'),
-  AI_SERVICE_URL: z.string().url().default('http://localhost:4005'),
-  NOTIFICATION_SERVICE_URL: z.string().url().default('http://localhost:4006'),
+  AUTH_SERVICE_URL: z.string().url().default('http://127.0.0.1:4001'),
+  CATALOG_SERVICE_URL: z.string().url().default('http://127.0.0.1:4002'),
+  ORDER_SERVICE_URL: z.string().url().default('http://127.0.0.1:4003'),
+  PAYMENT_SERVICE_URL: z.string().url().default('http://127.0.0.1:4004'),
+  AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:4005'),
+  NOTIFICATION_SERVICE_URL: z.string().url().default('http://127.0.0.1:4006'),
   
   // Redis
-  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  REDIS_URL: z.string().url().default('redis://127.0.0.1:6379'),
 });
 
 export type GatewayConfig = z.infer<typeof gatewayConfigSchema>;

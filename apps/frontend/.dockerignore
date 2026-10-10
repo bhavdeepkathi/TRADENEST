@@ -15,6 +15,5 @@ npm-debug.log*
 README.md
 docker-compose*.yml
 Dockerfile*
-nginx.conf
 *.md
 !.github

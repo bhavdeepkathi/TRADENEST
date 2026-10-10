@@ -106,7 +106,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // Calculate shipping and tax
   const shipping = subtotal > 499 ? 0 : 99;
-  const tax = Math.round(subtotal * 0.18); // 18% GST
+  const tax = 0;
   const total = subtotal + shipping + tax;
 
   // Validate coupon if provided

@@ -9,7 +9,7 @@ import { clearCart } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useGetWalletQuery } from '../../../app/api'
+import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery } from '../../../app/api'
 
 const checkoutSchema = z.object({
   fullName: z.string().min(2),
@@ -43,7 +43,7 @@ export default function Checkout() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
-  const cartItems = useAppSelector((s) => s.cart.items)
+  const accessToken = useAppSelector((s) => s.auth.accessToken)
   const [step, setStep] = useState(1) // 1: address, 2: payment, 3: processing, 4: success
   const [processing, setProcessing] = useState(false)
   const [paymentData, setPaymentData] = useState<any>(null)
@@ -53,16 +53,12 @@ export default function Checkout() {
   const [createOrder] = useCreateOrderMutation()
   const [createPaymentIntent] = useCreatePaymentIntentMutation()
   const [verifyPayment] = useVerifyPaymentMutation()
-  const { data: wallet } = useGetWalletQuery()
+  const [confirmPayment] = useConfirmPaymentMutation()
+  const { data: cart, isLoading: cartLoading, error: cartError } = useGetCartQuery(undefined, { skip: !accessToken })
+  const { data: wallet } = useGetWalletQuery(undefined, { skip: !accessToken })
 
-  // We need to get cart from API to calculate totals
-  // For now, use local cart items with mock products
-  const mockProducts: Record<string, { title: string; price: number; image: string }> = {
-    // This will be populated from the cart API in real implementation
-  }
-
-  const items = cartItems.map((i) => ({ ...i, product: mockProducts[i.productId] })).filter((i) => i.product)
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0)
+  const items = cart?.items || []
+  const subtotal = Number(cart?.subtotal || 0)
   const shipping = subtotal > 499 ? 0 : 99
   const total = subtotal + shipping
 
@@ -180,7 +176,7 @@ export default function Checkout() {
     setError(null)
     
     try {
-      // Step 1: Create order
+      // Step 1: Create the order from the authenticated server cart.
       const orderResult = await createOrder({
         shippingAddressId: 'addr-home', // In real app, this would be the address ID
         paymentMethod: data.paymentMethod,
@@ -263,8 +259,14 @@ export default function Checkout() {
         }
       }
 
-      // Step 4: Confirm payment and update order
+      // Step 4: Confirm payment and update the order before clearing the cart.
       if (verificationResult?.success) {
+        await confirmPayment({
+          orderId,
+          paymentId: paymentResult.paymentId,
+          providerRef: paymentResult.razorpayOrderId || paymentResult.stripeClientSecret || paymentResult.upiIntent || paymentResult.paymentId,
+          provider: data.paymentMethod,
+        }).unwrap()
         await dispatch(clearCart())
         setStep(4)
         toast.success('Order placed successfully!')
@@ -283,6 +285,14 @@ export default function Checkout() {
     } finally {
       setProcessing(false)
     }
+  }
+
+  if (cartLoading) {
+    return <div className="px-4 py-16 text-center text-secondary-600">Loading your cart...</div>
+  }
+
+  if (cartError || items.length === 0) {
+    return <div className="px-4 py-16 text-center text-secondary-600">Your cart is empty. Add products before checkout.</div>
   }
 
   // Step 4: Success

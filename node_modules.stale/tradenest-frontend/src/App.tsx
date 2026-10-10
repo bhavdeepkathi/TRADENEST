@@ -55,6 +55,7 @@ function App() {
           <Route path="/products" element={<ProductList />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
           <Route path="/cart" element={<CartPage />} />
+          <Route path="/wishlist" element={<WishlistPage />} />
 
           <Route element={<GuestRoute />}>
             <Route path="/login" element={<Login />} />

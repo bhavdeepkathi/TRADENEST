@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ShoppingCart,
   Heart,
@@ -29,6 +29,7 @@ import {
   Sparkles,
   ChevronRight,
 } from 'lucide-react'
+import { useState } from 'react'
 
 const features = [
   {
@@ -163,6 +164,21 @@ const itemVariants = {
 }
 
 export default function Home() {
+  const navigate = useNavigate()
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const submitSearch = () => {
+    const query = searchQuery.trim()
+    if (!query) return
+
+    const priceMatch = query.match(/\b(?:under|below|less than)\s*(?:₹|rs\.?|inr)?\s*([\d,]+)/i)
+    const searchParams = new URLSearchParams()
+    const textQuery = priceMatch ? query.replace(priceMatch[0], '').trim() : query
+    if (textQuery) searchParams.set('q', textQuery)
+    if (priceMatch) searchParams.set('maxPrice', priceMatch[1].replace(/,/g, ''))
+    navigate(`/products?${searchParams.toString()}`)
+  }
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -251,21 +267,32 @@ export default function Home() {
             transition={{ delay: 0.4 }}
             className="mt-16 mx-auto max-w-3xl"
           >
-            <div className="relative rounded-xl bg-white shadow-xl ring-1 ring-secondary-200 dark:bg-secondary-800 dark:ring-secondary-700 p-1">
+            <form
+              className="relative rounded-xl bg-white shadow-xl ring-1 ring-secondary-200 dark:bg-secondary-800 dark:ring-secondary-700 p-1"
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitSearch()
+              }}
+            >
               <div className="relative flex items-center rounded-lg bg-secondary-50 dark:bg-secondary-700/50 px-4 py-3">
                 <Search className="h-5 w-5 text-secondary-400" />
                 <input
                   type="search"
                   placeholder="Search products, brands, categories... (e.g., iPhone 15, Nike shoes, Kitchen appliances)"
                   className="flex-1 ml-3 bg-transparent placeholder-secondary-400 focus:outline-none text-secondary-900 dark:text-secondary-100"
-                  readOnly
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  aria-label="Search products, brands, and categories"
                 />
-                <div className="flex items-center gap-2 ml-3 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-sm font-medium">
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 ml-3 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
                   <Zap className="h-4 w-4" />
                   AI Search
-                </div>
+                </button>
               </div>
-            </div>
+            </form>
             <p className="mt-3 text-center text-sm text-secondary-500 dark:text-secondary-400">
               Try: <span className="font-medium text-secondary-700 dark:text-secondary-300">"wireless headphones under ₹3000"</span> or{" "}
               <span className="font-medium text-secondary-700 dark:text-secondary-300">"cotton summer dresses"</span>

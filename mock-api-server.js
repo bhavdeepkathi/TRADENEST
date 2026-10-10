@@ -1,4 +1,4 @@
-﻿const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const app = express();
 const PORT = 4000;
@@ -255,6 +255,30 @@ app.get("/api/products", (req, res) => {
   });
 });
 
+const mockCategories = [
+  { id: "1", name: "Mobiles", slug: "mobiles", description: "Smartphones & Mobile Accessories" },
+  { id: "2", name: "Computers", slug: "computers", description: "Laptops, Desktops & Components" },
+  { id: "3", name: "Electronics", slug: "electronics", description: "Headphones, Speakers & Gadgets" }
+];
+
+app.post("/api/auth/login", (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ code: "VALIDATION_ERROR", message: "Email and password are required" });
+  }
+  res.json({
+    accessToken: "mock-jwt-access-token",
+    refreshToken: "mock-jwt-refresh-token",
+    user: {
+      id: "mock-user-id",
+      email,
+      firstName: "Test",
+      lastName: "User",
+      role: "CUSTOMER"
+    }
+  });
+});
+
 app.get("/api/categories", (req, res) => {
   res.json(mockCategories);
 });
@@ -267,26 +291,22 @@ app.get("/api/products/:id", (req, res) => {
   res.json(product);
 });
 
-app.get("/api/categories", (req, res) => {
-  res.json(mockCategories);
-});
-
 app.get("/api/categories/:id", (req, res) => {
   const category = mockCategories.find(c => c.id === req.params.id);
   if (!category) {
     return res.status(404).json({ message: "Category not found" });
   }
   res.json(category);
-);
-
+});
 
 app.listen(PORT, () => {
   console.log(`Mock API server running on http://localhost:${PORT}`);
   console.log("Endpoints:");
-  console.log("  GET /api/products");
-  console.log("  GET /api/products/:id");
-  console.log("  GET /api/categories");
-  console.log("  GET /api/categories/:id");
+  console.log("  POST /api/auth/login");
+  console.log("  GET  /api/products");
+  console.log("  GET  /api/products/:id");
+  console.log("  GET  /api/categories");
+  console.log("  GET  /api/categories/:id");
 });
 
 module.exports = app;

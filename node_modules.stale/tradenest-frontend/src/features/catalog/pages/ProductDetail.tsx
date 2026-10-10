@@ -33,10 +33,10 @@ export default function ProductDetail() {
       if (accessToken) {
         try {
           await addToCart({ productId: product.id, quantity }).unwrap()
+          dispatch(addItem({ productId: product.id, quantity }))
           toast.success('Added to cart')
         } catch {
-          dispatch(addItem({ productId: product.id, quantity }))
-          toast.success('Added to cart locally. Sign in again to sync your cart.')
+          toast.error('Could not add this product to your cart. Please try again.')
         }
         return
       }
@@ -48,6 +48,7 @@ export default function ProductDetail() {
   const handleToggleWishlist = () => {
     if (product) {
       dispatch(toggle(product.id))
+      toast.success(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist')
     }
   }
 
@@ -260,7 +261,7 @@ export default function ProductDetail() {
 
             <div className="mt-6 rounded-lg border border-secondary-200 p-4 dark:border-secondary-700">
               <p className="text-sm text-secondary-600 dark:text-secondary-400">
-                <span className="font-medium">Sold by:</span> {product.seller?.storeName || 'TRADENEST'}
+                <span className="font-medium">Sold by:</span> TRADENEST
               </p>
             </div>
           </div>

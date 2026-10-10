@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(4001),
+  PORT: z.coerce.number().default(4000),
   HOST: z.string().default('0.0.0.0'),
 
   DATABASE_URL: z.string().url(),
@@ -16,6 +16,8 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('30d'),
+  JWT_ISSUER: z.string().default('tradenest'),
+  JWT_AUDIENCE: z.string().default('tradenest-api'),
 
   BCRYPT_ROUNDS: z.coerce.number().default(12),
 

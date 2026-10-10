@@ -80,9 +80,8 @@ export default function WishlistPage() {
       await addToCart({ productId, quantity: 1 }).unwrap()
       dispatch(addItem({ productId, quantity: 1 }))
       toast.success('Added to cart')
-    } catch (err) {
-      dispatch(addItem({ productId, quantity: 1 }))
-      toast.success('Added to cart locally. Sign in again to sync your cart.')
+    } catch {
+      toast.error('Could not add this product to your cart. Please try again.')
     }
   }
 

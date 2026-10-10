@@ -343,10 +343,19 @@ export default function Layout() {
                 <span>GSTIN: 29AAACT1234A1Z5</span>
               </div>
 
-              <div className="flex items-center gap-4">
-                <img src="https://img.shields.io/badge/Razorpay-Secured-blue?style=flat-square" alt="Razorpay Secured" className="h-6" />
-                <img src="https://img.shields.io/badge/Stripe-Certified-635BFF?style=flat-square" alt="Stripe Certified" className="h-6" />
-                <img src="https://img.shields.io/badge/ISO_27001-Certified-green?style=flat-square" alt="ISO 27001 Certified" className="h-6" />
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
+                  <span className="bg-slate-700 text-white px-2 py-1">Razorpay</span>
+                  <span className="bg-blue-600 text-white px-2 py-1">Secured</span>
+                </span>
+                <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
+                  <span className="bg-slate-700 text-white px-2 py-1">Stripe</span>
+                  <span className="bg-[#635BFF] text-white px-2 py-1">Certified</span>
+                </span>
+                <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
+                  <span className="bg-slate-700 text-white px-2 py-1">ISO 27001</span>
+                  <span className="bg-emerald-600 text-white px-2 py-1">Certified</span>
+                </span>
               </div>
             </div>
           </div>

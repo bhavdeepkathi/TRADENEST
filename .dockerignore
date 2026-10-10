@@ -31,7 +31,6 @@ docs
 prisma
 apps/backend/*/node_modules
 apps/backend/*/dist
-apps/backend/*/prisma/*.db
-apps/backend/*/prisma/*.db-journal
 apps/frontend/node_modules
 apps/frontend/dist
+!libs/*/dist

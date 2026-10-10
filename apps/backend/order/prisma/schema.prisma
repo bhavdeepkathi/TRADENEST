@@ -1,6 +1,7 @@
 // Prisma Schema for Order Service
 generator client {
   provider      = "prisma-client-js"
+  output        = "../../../../node_modules/@tradenest/order-prisma"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
@@ -24,6 +25,85 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUNDED
+}
+
+enum ProductStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  INACTIVE
+  REJECTED
+}
+
+model Seller {
+  id         String      @id
+  storeName  String
+  products   Product[]
+  inventories Inventory[]
+}
+
+model Category {
+  id       String    @id
+  name     String
+  slug     String
+  products Product[]
+}
+
+model Product {
+  id              String        @id
+  sellerId        String
+  seller          Seller        @relation(fields: [sellerId], references: [id])
+  categoryId      String
+  category        Category      @relation(fields: [categoryId], references: [id])
+  title           String
+  slug            String        @unique
+  brand           String
+  subcategory     String
+  description     String
+  price           Decimal       @db.Decimal(12, 2)
+  mrp             Decimal?      @db.Decimal(12, 2)
+  discountPercent Int
+  images          String[]
+  tags            String[]
+  status          ProductStatus
+  ratingAvg       Float?
+  reviewCount     Int
+  inventory       Inventory?
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+}
+
+model Inventory {
+  id                String   @id
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sellerId          String
+  seller            Seller   @relation(fields: [sellerId], references: [id])
+  quantity          Int
+  reserved          Int
+  lowStockThreshold Int
+  updatedAt         DateTime
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@index([productId])
 }
 
 model Order {
@@ -55,6 +135,7 @@ model OrderItem {
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   sellerId  String
   title     String
   price     Decimal  @db.Decimal(12, 2)

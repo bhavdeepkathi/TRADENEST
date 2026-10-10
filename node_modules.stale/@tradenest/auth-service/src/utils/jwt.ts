@@ -10,6 +10,8 @@ export async function generateAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
+    .setIssuer(config.JWT_ISSUER)
+    .setAudience(config.JWT_AUDIENCE)
     .setExpirationTime(config.JWT_ACCESS_EXPIRY)
     .sign(accessSecret);
 }
@@ -18,6 +20,8 @@ export async function generateRefreshToken(payload: Omit<JwtPayload, 'iat' | 'ex
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
+    .setIssuer(config.JWT_ISSUER)
+    .setAudience(config.JWT_AUDIENCE)
     .setExpirationTime(config.JWT_REFRESH_EXPIRY)
     .sign(refreshSecret);
 }

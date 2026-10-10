@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
+import { useLoginMutation } from '../../../app/api'
 import { setCredentials, setLoading } from '../authSlice'
 
 const loginSchema = z.object({
@@ -22,6 +23,7 @@ export default function Login() {
   const dispatch = useAppDispatch()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [login] = useLoginMutation()
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -31,25 +33,35 @@ export default function Login() {
     setIsLoading(true)
     dispatch(setLoading(true))
     try {
-      // TODO: replace with actual API call
-      await new Promise((r) => setTimeout(r, 1000))
-      const mockUser = {
-        id: 'usr-1',
+      const result = await login(data).unwrap()
+      const payload = JSON.parse(atob(result.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+      const user = {
+        id: payload.sub,
         email: data.email,
         firstName: 'John',
         lastName: 'Doe',
-        role: 'CUSTOMER' as const,
+        role: payload.role as 'CUSTOMER' | 'SELLER' | 'ADMIN' | 'SUPER_ADMIN',
       }
       dispatch(setCredentials({
-        user: mockUser,
-        accessToken: 'mock-access-token',
-        refreshToken: 'mock-refresh-token',
+        user,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
       }))
       toast.success('Welcome back!')
       const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
       navigate(`${from?.pathname ?? '/'}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
-    } catch {
-      toast.error('Invalid credentials')
+    } catch (error) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'data' in error &&
+        typeof error.data === 'object' &&
+        error.data !== null &&
+        'message' in error.data &&
+        typeof error.data.message === 'string'
+          ? error.data.message
+          : 'Unable to sign in. Please try again.'
+      toast.error(message)
     } finally {
       setIsLoading(false)
       dispatch(setLoading(false))

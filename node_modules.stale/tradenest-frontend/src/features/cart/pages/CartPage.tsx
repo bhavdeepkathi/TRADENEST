@@ -5,25 +5,41 @@ import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { removeItem, updateQuantity, clearCart, setCartItems } from '../cartSlice'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { useEffect } from 'react'
-import { useGetCartQuery, useGetProductsQuery, useUpdateCartItemMutation, useRemoveFromCartMutation, useClearCartMutation } from '../../../app/api'
+import { useEffect, useRef } from 'react'
+import { useAddToCartMutation, useGetCartQuery, useGetProductsQuery, useUpdateCartItemMutation, useRemoveFromCartMutation, useClearCartMutation } from '../../../app/api'
 
 export default function CartPage() {
   const dispatch = useAppDispatch()
   const localItems = useAppSelector((s) => s.cart.items)
   const accessToken = useAppSelector((s) => s.auth.accessToken)
+  const hasSyncedLocalCart = useRef(false)
+  const [addToCart] = useAddToCartMutation()
   const [updateCartItem] = useUpdateCartItemMutation()
   const [removeFromCart] = useRemoveFromCartMutation()
   const [clearCartApi] = useClearCartMutation()
   const { data: cart, isLoading, refetch } = useGetCartQuery(undefined, { skip: !accessToken })
   const { data: localProducts } = useGetProductsQuery({ page: 1, limit: 1000 })
 
-  // Sync local cart with server cart on load
+  // Preserve guest cart items after login by adding any local quantity not on the server.
   useEffect(() => {
-    if (cart && !isLoading) {
-      dispatch(setCartItems(cart.items.map(item => ({ productId: item.productId, quantity: item.quantity }))))
+    if (!cart || isLoading || hasSyncedLocalCart.current) return
+    hasSyncedLocalCart.current = true
+
+    const serverItems = new Map(cart.items.map((item) => [item.productId, item.quantity]))
+    const localItemsToSync = localItems.flatMap((item) => {
+      const quantity = item.quantity - (serverItems.get(item.productId) ?? 0)
+      return quantity > 0 ? [{ productId: item.productId, quantity }] : []
+    })
+
+    if (localItemsToSync.length > 0) {
+      void Promise.all(localItemsToSync.map((item) => addToCart(item).unwrap()))
+        .then(() => refetch())
+        .catch(() => toast.error('Some guest cart items could not be synced. They are still saved on this device.'))
+      return
     }
-  }, [cart, isLoading, dispatch])
+
+    dispatch(setCartItems(cart.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))))
+  }, [cart, isLoading, localItems, dispatch, addToCart, refetch])
 
   const displayItems: any[] = cart?.items?.length ? cart.items : localItems.flatMap((item) => {
     const product = localProducts?.data.find((candidate) => candidate.id === item.productId)
