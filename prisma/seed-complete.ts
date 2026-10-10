@@ -364,7 +364,6 @@ async function main() {
 	});
 
 	let productCount = 0;
-	const seededSlugs = new Set<string>();
 	for (const department of departments) {
 		const category = await prisma.category.upsert({
 			where: { slug: slugify(department.name) },
@@ -376,7 +375,6 @@ async function main() {
 			const discountPercent = 8 + ((index * 7 + department.name.length) % 28);
 			const mrp = Math.round(item.price / (1 - discountPercent / 100));
 			const slug = slugify(item.name);
-			seededSlugs.add(slug);
 			const product = await prisma.product.upsert({
 				where: { slug },
 				update: {
@@ -419,20 +417,6 @@ async function main() {
 				create: { productId: product.id, sellerId: seller.id, quantity: 24 + ((index * 17 + department.name.length) % 120), reserved: 0 },
 			});
 			productCount += 1;
-		}
-	}
-
-	const legacyProducts = await prisma.product.findMany({
-		where: { status: ProductStatus.ACTIVE },
-		select: { id: true, slug: true },
-	});
-	let legacyIndex = 0;
-	for (const product of legacyProducts) {
-		if (!seededSlugs.has(product.slug)) {
-			await prisma.product.update({
-				where: { id: product.id },
-				data: { images: [imageFor('Digital Products', legacyIndex++)] },
-			});
 		}
 	}
 

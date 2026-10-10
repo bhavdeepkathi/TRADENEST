@@ -51,6 +51,9 @@ npm run db:seed
 # open http://localhost:3000
 ```
 
+To add the 250-product marketplace demo catalog without removing existing products,
+run `npm run db:seed:complete`.
+
 To run the backend as local Node processes instead of in Docker, start PostgreSQL
 and Redis with `docker compose up -d postgres redis`, apply the schema with
 `npm run db:push`, then run `npm run dev:backend`. Start the frontend separately
