@@ -9,7 +9,17 @@ const router = Router();
 router.get('/', asyncHandler(async (req, res) => {
   const userId = req.headers['x-user-id'] as string;
   let wallet = await prisma.wallet.findUnique({ where: { userId }, include: { transactions: { orderBy: { createdAt: 'desc' }, take: 20 } } });
-  if (!wallet) { wallet = await prisma.wallet.create({ data: { userId } }); }
+  if (!wallet) {
+  wallet = await prisma.wallet.create({
+    data: { userId },
+    include: {
+      transactions: {
+        orderBy: { createdAt: 'desc' },
+        take: 20
+      }
+    }
+  });
+}
   res.json(wallet);
 }));
 

@@ -130,8 +130,7 @@ export default function OrderDetail() {
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <Link to={`/products/${item.product?.slug || ''}`} className="font-medium text-secondary-900 dark:text-secondary-50 hover:text-primary-600">
-                        {item.title}
+                    <Link to={`/products/${item.product?.id || ''}`} className="font-medium text-secondary-900 dark:text-secondary-50 hover:text-primary-600">    {item.title}
                       </Link>
                       <p className="text-sm text-secondary-500">Qty: {item.quantity} × ₹{item.price.toLocaleString()}</p>
                       {item.discount > 0 && (
