@@ -12,7 +12,7 @@ export function getRedisClient(): Redis {
       lazyConnect: true,
     });
     redisClient.on('connect', () => logger.info('Redis connected'));
-    redisClient.on('error', (err) => logger.error('Redis error:', err));
+    redisClient.on('error', (err) => logger.error({ err }, 'Redis error'));
   }
   return redisClient;
 }

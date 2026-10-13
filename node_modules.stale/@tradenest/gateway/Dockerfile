@@ -2,21 +2,28 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare npm@10.8.2 --activate
 
-# Copy lock file and manifests first for better caching
 COPY package-lock.json package.json ./
-COPY apps/*/package.json ./apps/
-COPY libs/*/package.json ./libs/
+COPY apps ./apps
+COPY libs ./libs
 
-# Install all dependencies including dev dependencies for TypeScript compilation
-RUN npm ci && npm install --save-dev @types/node@20 @types/express@4.17 @types/cors@2.8 @types/morgan@1.9 @types/express-rate-limit@5.1 @types/ioredis@5.0 helmet morgan express-rate-limit ioredis rate-limit-redis http-proxy-middleware zod pino
+RUN npm ci
+
 
 # Copy source code
 COPY . .
 
-# Copy libs dist to gateway's node_modules for TypeScript resolution
+# Build shared libraries in dependency order
+WORKDIR /app/libs/common
+RUN npm run build
+
+WORKDIR /app/libs/auth
+RUN npm run build
+
+
+# Make compiled shared libraries available to the gateway
 RUN mkdir -p /app/apps/backend/gateway/node_modules/@tradenest && \
-    cp -r /app/libs/common/dist /app/apps/backend/gateway/node_modules/@tradenest/common && \
-    cp -r /app/libs/auth/dist /app/apps/backend/gateway/node_modules/@tradenest/auth
+    cp -r /app/libs/common /app/apps/backend/gateway/node_modules/@tradenest/common && \
+    cp -r /app/libs/auth /app/apps/backend/gateway/node_modules/@tradenest/auth
 
 # Build only the gateway workspace (libs are pre-built)
 WORKDIR /app/apps/backend/gateway

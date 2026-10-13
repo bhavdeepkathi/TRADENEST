@@ -1,19 +1,27 @@
+
 FROM node:20-alpine AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare npm@10.8.2 --activate
 
-# Copy lock file and manifests first for better caching
+# Copy package manifests and workspace directories
 COPY package-lock.json package.json ./
-COPY apps/*/package.json ./apps/
-COPY libs/*/package.json ./libs/
+COPY apps ./apps
+COPY libs ./libs
 
-# Install all dependencies including dev dependencies for TypeScript compilation
-RUN npm ci && npm install --save-dev @types/node@20 @types/express@4.17 @types/cors@2.8 @types/morgan@1.9 @types/express-rate-limit@5.1 @types/ioredis@5.0 helmet morgan express-rate-limit ioredis rate-limit-redis http-proxy-middleware zod pino
+# Install dependencies using the complete workspace structure
+RUN CYPRESS_INSTALL_BINARY=0 npm ci
 
 # Copy source code
 COPY . .
 
-# Build only the catalog workspace
+# Build shared libraries before the catalog service
+WORKDIR /app/libs/common
+RUN npm run build
+
+WORKDIR /app/libs/auth
+RUN npm run build
+
+# Generate Prisma client and compile catalog
 WORKDIR /app/apps/backend/catalog
 RUN npm run build
 
@@ -21,10 +29,14 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache dumb-init
+
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/apps/backend/catalog/dist ./dist
 COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/libs/common/dist ./libs/common/dist
+COPY --from=builder --chown=node:node /app/libs/auth/dist ./libs/auth/dist
+
 USER node
-EXPOSE 4000
-ENTRYPOINT ["dumb-init","--"]
-CMD ["node","dist/main.js"]
+EXPOSE 4002
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main.js"]

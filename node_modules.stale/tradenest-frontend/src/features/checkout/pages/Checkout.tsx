@@ -523,7 +523,11 @@ export default function Checkout() {
               <div className="mb-4 max-h-60 overflow-y-auto">
                 {items.map((item) => (
                   <div key={item.productId} className="flex gap-3">
-                    <img src={item.product.image} alt="" className="h-16 w-16 rounded-lg object-cover" />
+                    <img
+  src={item.product.images?.[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop'}
+  alt=""
+  className="h-16 w-16 rounded-lg object-cover"
+/>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-secondary-900 dark:text-secondary-50 truncate">{item.product.title}</p>
                       <p className="text-sm text-secondary-500">Qty: {item.quantity}</p>
