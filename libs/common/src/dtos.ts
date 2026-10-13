@@ -183,7 +183,7 @@ export const CreateProductDtoSchema = z.object({
   description: z.string().min(10).max(10000),
   price: z.number().positive().max(999999.99),
   mrp: z.number().positive().max(999999.99).optional(),
-  categoryId: z.string().uuid(),
+  categoryId: z.string().regex(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{20,})$/i, 'Invalid category ID format'),
   tags: z.array(z.string().max(50)).max(20).default([]),
   images: z.array(z.string().url()).max(10).default([]),
   discountPercent: z.number().int().min(0).max(100).default(0),

@@ -8,6 +8,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
 import { useLoginMutation } from '../../../app/api'
+import { api } from '../../../app/api'
 import { setCredentials, setLoading } from '../authSlice'
 
 const loginSchema = z.object({
@@ -35,21 +36,44 @@ export default function Login() {
     try {
       const result = await login(data).unwrap()
       const payload = JSON.parse(atob(result.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-      const user = {
+      
+      // Store tokens first, then fetch user profile
+      const tempUser = {
         id: payload.sub,
         email: data.email,
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: '',
+        lastName: '',
         role: payload.role as 'CUSTOMER' | 'SELLER' | 'ADMIN' | 'SUPER_ADMIN',
       }
       dispatch(setCredentials({
-        user,
+        user: tempUser,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
       }))
+      
+      // Fetch actual user profile
+      try {
+        const meResult = await dispatch(api.endpoints.getMe.initiate()).unwrap()
+        dispatch(setCredentials({
+          user: {
+            ...tempUser,
+            firstName: meResult.firstName,
+            lastName: meResult.lastName,
+          },
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        }))
+      } catch {
+        // If /me fails, keep temp user
+      }
+      
       toast.success('Welcome back!')
+      
+      // Redirect based on user role
+      const redirectPath = payload.role === 'SELLER' ? '/seller/dashboard' : '/'
       const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
-      navigate(`${from?.pathname ?? '/'}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
+      const finalPath = from?.pathname ?? redirectPath
+      navigate(`${finalPath}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
     } catch (error) {
       const message =
         typeof error === 'object' &&

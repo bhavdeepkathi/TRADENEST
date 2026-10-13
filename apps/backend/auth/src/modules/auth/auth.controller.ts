@@ -6,7 +6,7 @@ import { AppError, NotFoundError, ConflictError, ValidationError } from '@traden
 import { tokenStore, otpStore } from '../../utils/redis';
 import { generateAccessToken, generateRefreshToken, parseTokenExpiry } from '../../utils/jwt';
 import { logger } from '../../utils/logger';
-import { RegisterDto, LoginDto, VerifyOtpDto, ForgotPasswordDto, ResetPasswordDto, TokenPair, UserRole } from '@tradenest/common';
+import { RegisterDto, LoginDto, VerifyOtpDto, ForgotPasswordDto, ResetPasswordDto, TokenPair, UserRole, UpdateProfileDto } from '@tradenest/common';
 
 export class AuthRepository {
   async findUserByEmail(email: string) {
@@ -126,6 +126,13 @@ export class AuthService {
     logger.info(`Registration OTP for ${dto.email}: ${otp}`);
 
     return { message: 'Registration successful. Please verify your email with the OTP sent.' };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<any> {
+    const user = await this.repo.updateUser(userId, dto);
+    if (!user) throw new NotFoundError('User');
+    const { passwordHash, ...safeUser } = user;
+    return safeUser;
   }
 
   async verifyOtp(dto: VerifyOtpDto): Promise<TokenPair> {
@@ -319,5 +326,11 @@ export class AuthController {
     if (!user) throw new NotFoundError('User');
     const { passwordHash, ...safeUser } = user;
     res.json(safeUser);
+  };
+
+  updateProfile = async (req: any, res: any) => {
+    const authReq = req as any;
+    const result = await this.service.updateProfile(authReq.user.id, req.body);
+    res.json(result);
   };
 }

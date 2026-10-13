@@ -21,6 +21,45 @@ export const api = createApi({
     }, { email: string; password: string }>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),
     }),
+    register: builder.mutation<{
+      message: string
+    }, { email: string; password: string; firstName: string; lastName: string; phone?: string; role?: string }>({
+      query: (body) => ({ url: '/auth/register', method: 'POST', body }),
+    }),
+    verifyOtp: builder.mutation<{
+      accessToken: string
+      refreshToken: string
+    }, { email: string; otp: string }>({
+      query: (body) => ({ url: '/auth/verify-otp', method: 'POST', body }),
+    }),
+    getMe: builder.query<{
+      id: string
+      email: string
+      firstName: string
+      lastName: string
+      phone: string | null
+      avatarUrl: string | null
+      role: string
+      isVerified: boolean
+      isActive: boolean
+    }, void>({
+      query: () => '/auth/me',
+      providesTags: ['User'],
+    }),
+    updateProfile: builder.mutation<{
+      id: string
+      email: string
+      firstName: string
+      lastName: string
+      phone: string | null
+      avatarUrl: string | null
+      role: string
+      isVerified: boolean
+      isActive: boolean
+    }, { firstName?: string; lastName?: string; phone?: string | null; avatarUrl?: string | null }>({
+      query: (body) => ({ url: '/auth/me', method: 'PATCH', body }),
+      invalidatesTags: ['User'],
+    }),
 
     // Products
     getProducts: builder.query<{
@@ -71,6 +110,96 @@ export const api = createApi({
     }, string>({
       query: (id) => `/products/${id}`,
       providesTags: (result, error, id) => [{ type: 'Product', id }],
+    }),
+    getSellerProducts: builder.query<{
+      data: Array<{
+        id: string
+        sellerId: string
+        categoryId: string
+        title: string
+        slug: string
+        description: string
+        price: number
+        mrp: number | null
+        images: string[]
+        tags: string[]
+        status: string
+        ratingAvg: number | null
+        reviewCount: number
+        createdAt: string
+        updatedAt: string
+        category: { id: string; name: string; slug: string }
+        inventory: { quantity: number; reserved: number } | null
+      }>
+      meta: { page: number; limit: number; total: number; totalPages: number }
+    }, { page?: number; limit?: number; status?: string }>({
+      query: (params) => ({
+        url: '/products',
+        params: { ...params, sellerId: 'me' },
+      }),
+      providesTags: ['Product'],
+    }),
+    createProduct: builder.mutation<{
+      id: string
+      sellerId: string
+      categoryId: string
+      title: string
+      slug: string
+      description: string
+      price: number
+      mrp: number | null
+      images: string[]
+      tags: string[]
+      status: string
+      createdAt: string
+      updatedAt: string
+    }, {
+      title: string
+      brand?: string
+      subcategory?: string
+      description: string
+      price: number
+      mrp?: number
+      categoryId: string
+      tags?: string[]
+      images?: string[]
+      discountPercent?: number
+    }>({
+      query: (body) => ({ url: '/products', method: 'POST', body }),
+      invalidatesTags: ['Product'],
+    }),
+    updateProduct: builder.mutation<{
+      id: string
+      sellerId: string
+      categoryId: string
+      title: string
+      slug: string
+      description: string
+      price: number
+      mrp: number | null
+      images: string[]
+      tags: string[]
+      status: string
+      updatedAt: string
+    }, { id: string; body: {
+      title?: string
+      brand?: string
+      subcategory?: string
+      description?: string
+      price?: number
+      mrp?: number
+      categoryId?: string
+      tags?: string[]
+      images?: string[]
+      discountPercent?: number
+      status?: string
+    }}>({
+      query: ({ id, body }) => ({ url: `/products/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['Product'],
+    }),
+    deleteProduct: builder.mutation<{ message: string }, string>({
+      query: (id) => ({ url: `/products/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Product'],
     }),
     
     // Categories
@@ -293,6 +422,10 @@ export const api = createApi({
 
 export const {
   useLoginMutation,
+  useRegisterMutation,
+  useVerifyOtpMutation,
+  useGetMeQuery,
+  useUpdateProfileMutation,
   useGetProductsQuery,
   useGetProductQuery,
   useGetCategoriesQuery,
@@ -309,4 +442,8 @@ export const {
   useVerifyPaymentMutation,
   useGetWalletQuery,
   useAddToWalletMutation,
+  useGetSellerProductsQuery,
+  useCreateProductMutation,
+  useUpdateProductMutation,
+  useDeleteProductMutation,
 } = api

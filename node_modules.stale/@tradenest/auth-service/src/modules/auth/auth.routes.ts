@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { authGuard } from '../../guards/authGuard';
 import { asyncHandler } from '../../middlewares/errorHandler';
 import { AuthController } from './auth.controller';
-import { RegisterDtoSchema, LoginDtoSchema, VerifyOtpDtoSchema, ForgotPasswordDtoSchema, ResetPasswordDtoSchema, RefreshTokenSchema } from '@tradenest/common';
+import { RegisterDtoSchema, LoginDtoSchema, VerifyOtpDtoSchema, ForgotPasswordDtoSchema, ResetPasswordDtoSchema, RefreshTokenSchema, UpdateProfileDtoSchema } from '@tradenest/common';
 import { ValidationError } from '@tradenest/common';
 
 const router = Router();
@@ -33,5 +33,6 @@ router.post('/reset-password', validate(ResetPasswordDtoSchema), asyncHandler(co
 router.post('/logout', authGuard, asyncHandler(controller.logout));
 router.post('/logout-all', authGuard, asyncHandler(controller.logoutAll));
 router.get('/me', authGuard, asyncHandler(controller.me));
+router.patch('/me', authGuard, validate(UpdateProfileDtoSchema), asyncHandler(controller.updateProfile));
 
 export { router as authRouter };

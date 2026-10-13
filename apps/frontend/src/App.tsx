@@ -1,19 +1,29 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAppSelector } from './app/hooks'
+import { ProtectedRoute, GuestRoute } from './components/RoleBasedRoute'
+import { RoleFallbackRedirect } from './components/RoleFallbackRedirect'
 import Layout from './components/Layout'
+import SellerLayout from './components/SellerLayout'
 import Home from './features/catalog/pages/Home'
 import ProductList from './features/catalog/pages/ProductList'
 import ProductDetail from './features/catalog/pages/ProductDetail'
 import Login from './features/auth/pages/Login'
 import Register from './features/auth/pages/Register'
+import VerifyEmail from './features/auth/pages/VerifyEmail'
 import CartPage from './features/cart/pages/CartPage'
 import Checkout from './features/checkout/pages/Checkout'
 import Profile from './features/profile/pages/Profile'
 import Orders from './features/orders/pages/Orders'
 import OrderDetail from './features/orders/pages/OrderDetail'
 import WishlistPage from './features/wishlist/pages/WishlistPage'
-import NotFound from './components/NotFound'
+import SellerDashboard from './features/seller/pages/SellerDashboard'
+import Inventory from './features/seller/pages/Inventory'
+import SellerOrders from './features/seller/pages/Orders'
+import AddProduct from './features/seller/pages/AddProduct'
+import Analytics from './features/seller/pages/Analytics'
+import SellerSettings from './features/seller/pages/Settings'
+import SellerProfile from './features/seller/pages/Profile'
 
 function PageTransition() {
   return (
@@ -33,45 +43,67 @@ function PageTransition() {
   )
 }
 
-function ProtectedRoute() {
-  const location = useLocation()
-  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated)
-
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace state={{ from: location }} />
+function CustomerRoute() {
+  const { user } = useAppSelector((state) => state.auth)
+  const isCustomer = user?.role === 'CUSTOMER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  return isCustomer ? <Outlet /> : <Navigate to="/seller/dashboard" replace />
 }
 
-function GuestRoute() {
-  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated)
-
-  return isAuthenticated ? <Navigate to="/" replace /> : <Outlet />
+function SellerRoute() {
+  const { user } = useAppSelector((state) => state.auth)
+  const isSeller = user?.role === 'SELLER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  return isSeller ? <Outlet /> : <Navigate to="/" replace />
 }
 
 function App() {
   return (
     <Routes>
+      {/* Public Routes (no layout) */}
+      <Route element={<GuestRoute />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+      </Route>
+
+      {/* Customer Routes */}
       <Route element={<Layout />}>
         <Route element={<PageTransition />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/products" element={<ProductList />} />
-          <Route path="/products/:slug" element={<ProductDetail />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/wishlist" element={<WishlistPage />} />
-
-          <Route element={<GuestRoute />}>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-          </Route>
-
           <Route element={<ProtectedRoute />}>
-            <Route path="/checkout" element={<Checkout />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/orders/:id" element={<OrderDetail />} />
+            <Route element={<CustomerRoute />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/products" element={<ProductList />} />
+              <Route path="/products/:slug" element={<ProductDetail />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/wishlist" element={<WishlistPage />} />
+              <Route path="/checkout" element={<Checkout />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/:id" element={<OrderDetail />} />
+            </Route>
           </Route>
-
-          <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
+
+      {/* Seller Routes */}
+      <Route element={<SellerLayout />}>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<SellerRoute />}>
+            <Route path="/seller/dashboard" element={<SellerDashboard />} />
+            <Route path="/seller/inventory" element={<Inventory />} />
+            <Route path="/seller/orders" element={<SellerOrders />} />
+            <Route path="/seller/orders/:id" element={<SellerOrders />} />
+            <Route path="/seller/products/add" element={<AddProduct />} />
+            <Route path="/seller/products/:id/edit" element={<AddProduct />} />
+            <Route path="/seller/analytics" element={<Analytics />} />
+            <Route path="/seller/settings" element={<SellerSettings />} />
+            <Route path="/seller/profile" element={<SellerProfile />} />
+            <Route path="/seller/help" element={<div className="p-8">Help Center</div>} />
+          </Route>
+        </Route>
+      </Route>
+
+      {/* Fallback - redirect based on role */}
+      <Route path="*" element={<RoleFallbackRedirect />} />
     </Routes>
   )
 }

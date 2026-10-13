@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,7 +7,8 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
-import { setCredentials, setLoading } from '../authSlice'
+import { useRegisterMutation } from '../../../app/api'
+import { setLoading } from '../authSlice'
 
 const registerSchema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
@@ -27,40 +28,45 @@ type RegisterForm = z.infer<typeof registerSchema>
 
 export default function Register() {
   const navigate = useNavigate()
-  const location = useLocation()
   const dispatch = useAppDispatch()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [registerMutation] = useRegisterMutation()
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<RegisterForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
     defaultValues: { role: 'CUSTOMER' },
   })
-
-  const password = watch('password')
 
   const onSubmit = async (data: RegisterForm) => {
     setIsLoading(true)
     dispatch(setLoading(true))
     try {
-      await new Promise((r) => setTimeout(r, 1000))
-      const mockUser = {
-        id: 'usr-new',
+      // Clean phone number: remove spaces, dashes, parentheses, keep only digits and leading +
+      const cleanPhone = data.phone ? data.phone.replace(/[^\d+]/g, '') : undefined
+      await registerMutation({
         email: data.email,
+        password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        phone: cleanPhone,
         role: data.role,
-      }
-      dispatch(setCredentials({
-        user: mockUser,
-        accessToken: 'mock-access-token',
-        refreshToken: 'mock-refresh-token',
-      }))
-      toast.success('Account created successfully!')
-      const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
-      navigate(`${from?.pathname ?? '/'}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
-    } catch {
-      toast.error('Registration failed')
+      }).unwrap()
+
+      toast.success('Account created! Please verify your email.')
+      navigate(`/verify-email?email=${encodeURIComponent(data.email)}&role=${data.role}`, { replace: true })
+    } catch (error) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'data' in error &&
+        typeof error.data === 'object' &&
+        error.data !== null &&
+        'message' in error.data &&
+        typeof error.data.message === 'string'
+          ? error.data.message
+          : 'Registration failed. Please try again.'
+      toast.error(message)
     } finally {
       setIsLoading(false)
       dispatch(setLoading(false))
