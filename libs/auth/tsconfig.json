@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "target": "ES2020",
@@ -15,8 +16,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@tradenest/common": ["../common/src"],
-      "jose": ["../../node_modules/jose"]
+      "@tradenest/common": ["../common/dist"]
     }
   },
   "include": ["src/**/*"],

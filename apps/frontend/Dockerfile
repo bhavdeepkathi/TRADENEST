@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install dependencies - cache layer
 COPY package*.json ./
-RUN npm ci --prefer-offline --no-audit --no-fund
+RUN CYPRESS_INSTALL_BINARY=0 npm install --no-audit --no-fund
 
 # Copy source
 COPY . .
@@ -20,8 +20,10 @@ FROM nginx:alpine AS runner
 # Install security updates and dumb-init
 RUN apk add --no-cache dumb-init curl
 
-# Create non-root user
-RUN addgroup -g 1001 -S nginx && adduser -S nginx -u 1001 -G nginx
+# # Create non-root user
+# RUN addgroup -g 1001 -S nginx && adduser -S nginx -u 1001 -G nginx
+
+# Reuse the nginx user and group provided by nginx:alpine
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf

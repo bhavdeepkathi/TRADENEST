@@ -15,10 +15,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "@tradenest/common": ["../../libs/common/src"]
-    }
+   "paths": {
+  "@/*": ["src/*"],
+  "@tradenest/common": ["../../../libs/common/dist"]
+}
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test", "prisma"]

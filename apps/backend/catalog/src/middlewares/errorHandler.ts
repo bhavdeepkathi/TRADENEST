@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { AppError, isAppError } from '@tradenest/common';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -43,6 +43,11 @@ export function notFoundHandler(req: Request, res: Response): void {
   res.status(404).json({ code: 'NOT_FOUND', message: `Route ${req.method} ${req.path} not found` });
 }
 
-export function asyncHandler(fn: Function) {
-  return (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res, next)).catch(next);
+
+export function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
+): RequestHandler {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 }
