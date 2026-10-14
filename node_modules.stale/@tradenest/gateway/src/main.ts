@@ -7,7 +7,7 @@ import Redis from 'ioredis';
 import { RedisStore } from 'rate-limit-redis';
 
 import { gatewayConfig } from './config';
-import { serviceRoutes, createProxyMiddlewareForService } from './routes/proxy';
+import { serviceRoutes, createProxyMiddlewareForGateway } from './routes/proxy';
 import { createRouteAuthMiddleware, addSecurityHeaders, requestLogger, errorHandler } from './middleware';
 
 async function bootstrap() {
@@ -45,10 +45,6 @@ async function bootstrap() {
   });
   app.use('/api/', limiter);
 
-  // Body parsing
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
   // Logging
   if (gatewayConfig.NODE_ENV !== 'test') {
     app.use(morgan('combined'));
@@ -73,10 +69,8 @@ async function bootstrap() {
   // Auth middleware for routes
   app.use('/api/', createRouteAuthMiddleware());
 
-  // Mount proxy routes
-  for (const route of serviceRoutes) {
-    app.use(route.path, createProxyMiddlewareForService(route));
-  }
+  // Mount single proxy middleware for all /api routes
+  app.use('/api', createProxyMiddlewareForGateway());
 
   // 404 handler
   app.use((req, res) => {

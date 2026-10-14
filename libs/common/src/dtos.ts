@@ -9,7 +9,7 @@ import {
   ReturnStatus,
   KYCStatus,
   ProductStatus,
-} from './enums';
+} from './enums.js';
 
 // ===========================================
 // Base Types
@@ -83,6 +83,12 @@ export const TokenPairSchema = z.object({
 });
 
 export type TokenPair = z.infer<typeof TokenPairSchema>;
+
+export const RefreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+export type RefreshTokenDto = z.infer<typeof RefreshTokenSchema>;
 
 export const JwtPayloadSchema = z.object({
   sub: z.string(),

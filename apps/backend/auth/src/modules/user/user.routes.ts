@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../utils/prisma';
 import { authGuard, requireRoles, AuthenticatedRequest } from '../../guards/authGuard';
@@ -12,7 +12,7 @@ const router = Router();
 
 // Validation middleware
 function validate(schema: z.ZodSchema) {
-  return (req: any, res: any, next: any) => {
+  return (req: Request, res: Response, next: any) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       throw new ValidationError('Invalid request data', result.error.flatten().fieldErrors);
@@ -23,7 +23,7 @@ function validate(schema: z.ZodSchema) {
 }
 
 // Get current user profile
-router.get('/profile', authGuard, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.get('/profile', authGuard, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: {
@@ -45,7 +45,7 @@ router.get('/profile', authGuard, asyncHandler(async (req: AuthenticatedRequest,
 }));
 
 // Update profile
-router.patch('/profile', authGuard, validate(UpdateProfileDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.patch('/profile', authGuard, validate(UpdateProfileDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = await prisma.user.update({
     where: { id: req.user.id },
     data: req.body,
@@ -65,7 +65,7 @@ router.patch('/profile', authGuard, validate(UpdateProfileDtoSchema), asyncHandl
 }));
 
 // Change password
-router.post('/change-password', authGuard, validate(ChangePasswordDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/change-password', authGuard, validate(ChangePasswordDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user) throw new NotFoundError('User');
 
@@ -79,7 +79,7 @@ router.post('/change-password', authGuard, validate(ChangePasswordDtoSchema), as
 }));
 
 // Addresses
-router.get('/addresses', authGuard, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.get('/addresses', authGuard, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const addresses = await prisma.address.findMany({
     where: { userId: req.user.id },
     orderBy: { isDefault: 'desc' },
@@ -87,7 +87,7 @@ router.get('/addresses', authGuard, asyncHandler(async (req: AuthenticatedReques
   res.json(addresses);
 }));
 
-router.post('/addresses', authGuard, validate(CreateAddressDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/addresses', authGuard, validate(CreateAddressDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   // If setting as default, unset other defaults
   if (req.body.isDefault) {
     await prisma.address.updateMany({
@@ -102,7 +102,7 @@ router.post('/addresses', authGuard, validate(CreateAddressDtoSchema), asyncHand
   res.status(201).json(address);
 }));
 
-router.patch('/addresses/:id', authGuard, validate(UpdateAddressDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.patch('/addresses/:id', authGuard, validate(UpdateAddressDtoSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const address = await prisma.address.findFirst({
     where: { id: req.params.id, userId: req.user.id },
   });
@@ -122,7 +122,7 @@ router.patch('/addresses/:id', authGuard, validate(UpdateAddressDtoSchema), asyn
   res.json(updated);
 }));
 
-router.delete('/addresses/:id', authGuard, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.delete('/addresses/:id', authGuard, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const address = await prisma.address.findFirst({
     where: { id: req.params.id, userId: req.user.id },
   });
@@ -133,7 +133,7 @@ router.delete('/addresses/:id', authGuard, asyncHandler(async (req: Authenticate
 }));
 
 // Admin: Get all users
-router.get('/', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req, res) => {
+router.get('/', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
   const role = req.query.role as UserRole | undefined;
@@ -167,7 +167,7 @@ router.get('/', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), a
 }));
 
 // Admin: Get user by ID
-router.get('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req, res) => {
+router.get('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     select: {
@@ -191,7 +191,7 @@ router.get('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 }));
 
 // Admin: Update user
-router.patch('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req, res) => {
+router.patch('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
   const allowedFields = ['firstName', 'lastName', 'phone', 'avatarUrl', 'role', 'isActive', 'isVerified'];
   const data = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowedFields.includes(k)));
 

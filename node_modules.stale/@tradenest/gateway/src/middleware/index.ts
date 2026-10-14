@@ -7,15 +7,19 @@ export function createRouteAuthMiddleware() {
     const requestPath = req.originalUrl.split('?')[0];
     const route = serviceRoutes.find(r => requestPath.startsWith(r.path));
     
+    console.log(`[Auth] ${req.method} ${requestPath} -> route: ${route?.path}, authRequired: ${route?.authRequired}`);
+    
     if (!route) {
-      // No matching route, let it pass through (will 404 later)
+      console.log(`[Auth] No route found for ${requestPath}`);
       next();
       return;
     }
 
     if (route.authRequired) {
+      console.log(`[Auth] Using authMiddleware for ${requestPath}`);
       authMiddleware(req as AuthenticatedRequest, res, next);
     } else {
+      console.log(`[Auth] Using optionalAuthMiddleware for ${requestPath}`);
       optionalAuthMiddleware(req as AuthenticatedRequest, res, next);
     }
   };

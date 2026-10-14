@@ -73,8 +73,24 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST /api/products - Create product (seller)
 router.post('/', asyncHandler(async (req, res) => {
-  // In real implementation, get sellerId from auth
-  const sellerId = 'seller-id-from-auth';
+  const sellerId = req.headers['x-user-id'] as string;
+  if (!sellerId) {
+    throw new ValidationError('Authentication required', { sellerId: ['Seller ID not found in request'] });
+  }
+
+  // Ensure seller record exists in the shared Seller table (managed by order service)
+  // First check if seller exists for this userId
+  const existingSeller = await prisma.$queryRaw`SELECT id FROM "Seller" WHERE "userId" = ${sellerId} LIMIT 1` as Array<{id: string}>;
+  let actualSellerId: string;
+  
+  if (existingSeller.length > 0) {
+    actualSellerId = existingSeller[0].id;
+  } else {
+    // Create new seller record with id = userId
+    await prisma.$executeRaw`INSERT INTO "Seller" (id, "userId", "storeName", "kycStatus", "totalRevenue", "totalOrders", "createdAt", "updatedAt") VALUES (${sellerId}, ${sellerId}, ${`Store ${sellerId.slice(0, 8)}`}, 'PENDING', 0, 0, NOW(), NOW())`;
+    actualSellerId = sellerId;
+  }
+
   const data = CreateProductDtoSchema.parse(req.body);
   
   const slugBase = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -85,7 +101,7 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   const product = await prisma.product.create({
-    data: { ...data, sellerId, slug, status: ProductStatus.PENDING_APPROVAL },
+    data: { ...data, sellerId: actualSellerId, slug, status: ProductStatus.PENDING_APPROVAL },
   });
   res.status(201).json(product);
 }));

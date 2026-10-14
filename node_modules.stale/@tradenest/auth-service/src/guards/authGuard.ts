@@ -11,14 +11,14 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export function authGuard(req: Request, res: Response, next: NextFunction): void {
+export async function authGuard(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = extractTokenFromHeader(req.headers.authorization);
   if (!token) {
     throw new AuthenticationError('Access token required');
   }
 
   try {
-    const payload = verifyAccessToken(token);
+    const payload = await verifyAccessToken(token);
     (req as AuthenticatedRequest).user = {
       id: payload.sub,
       email: payload.email,
@@ -43,7 +43,7 @@ export function requireRoles(...allowedRoles: UserRole[]) {
   };
 }
 
-export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+export async function optionalAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = extractTokenFromHeader(req.headers.authorization);
   if (!token) {
     next();
@@ -51,7 +51,7 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
   }
 
   try {
-    const payload = verifyAccessToken(token);
+    const payload = await verifyAccessToken(token);
     (req as AuthenticatedRequest).user = {
       id: payload.sub,
       email: payload.email,

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { getRedisClient } from '../../utils/redis';
 import { asyncHandler } from '../../middlewares/errorHandler';
@@ -6,7 +6,7 @@ import { config } from '../../config';
 
 const router = Router();
 
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const checks = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -41,7 +41,7 @@ router.get('/', asyncHandler(async (req, res) => {
   res.status(statusCode).json(checks);
 }));
 
-router.get('/ready', asyncHandler(async (req, res) => {
+router.get('/ready', asyncHandler(async (req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     const redis = getRedisClient();

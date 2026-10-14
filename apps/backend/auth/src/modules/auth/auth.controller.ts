@@ -28,7 +28,7 @@ export class AuthRepository {
     return prisma.user.create({ data });
   }
 
-  async updateUser(id: string, data: Partial<{ firstName: string; lastName: string; phone: string | null; avatarUrl: string | null; isVerified: boolean; isActive: boolean }>) {
+  async updateUser(id: string, data: Partial<{ firstName: string; lastName: string; phone: string | null; avatarUrl: string | null; isVerified: boolean; isActive: boolean; lastLoginAt: Date | null; passwordHash: string }>) {
     return prisma.user.update({ where: { id }, data });
   }
 
