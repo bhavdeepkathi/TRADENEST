@@ -8,7 +8,8 @@ const statusStyles: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   PENDING_APPROVAL: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   DRAFT: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-  ARCHIVED: 'bg-gray-100 text-gray-500 dark:bg-gray-900/30 dark:text-gray-500',
+  INACTIVE: 'bg-gray-100 text-gray-500 dark:bg-gray-900/30 dark:text-gray-500',
+  REJECTED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   OUT_OF_STOCK: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   LOW_STOCK: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
 }
@@ -120,7 +121,8 @@ export default function Inventory() {
             <option value="ACTIVE">Active</option>
             <option value="PENDING_APPROVAL">Pending Approval</option>
             <option value="DRAFT">Draft</option>
-            <option value="ARCHIVED">Archived</option>
+            <option value="INACTIVE">Inactive</option>
+            <option value="REJECTED">Rejected</option>
             <option value="OUT_OF_STOCK">Out of Stock</option>
           </select>
           <button onClick={() => refetch()} disabled={isLoading} className="btn btn-outline flex items-center gap-2">

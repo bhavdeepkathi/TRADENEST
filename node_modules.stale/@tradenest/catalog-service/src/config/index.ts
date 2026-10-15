@@ -2,11 +2,13 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(4000),
+  PORT: z.coerce.number().default(4002),
   HOST: z.string().default('0.0.0.0'),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
+  JWT_ISSUER: z.string().default('tradenest'),
+  JWT_AUDIENCE: z.string().default('tradenest-api'),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),

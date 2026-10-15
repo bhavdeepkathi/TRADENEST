@@ -18,8 +18,20 @@ export default defineConfig({
     port: 3000,
     open: true,
     proxy: {
+      '/api/auth': {
+        target: 'http://localhost:4001',
+        changeOrigin: true,
+      },
+      '/api/products': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+      },
+      '/api/categories': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+      },
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:4004',
         changeOrigin: true,
       },
     },

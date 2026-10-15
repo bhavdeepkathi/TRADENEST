@@ -4,6 +4,7 @@ import { prisma } from '../../utils/prisma';
 import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError } from '@tradenest/common';
 import { ProductQuerySchema, CreateProductDtoSchema, UpdateProductDtoSchema, ProductStatus } from '@tradenest/common';
+import { authMiddleware } from '../../middlewares/auth';
 
 const router = Router();
 
@@ -24,7 +25,14 @@ router.get('/', asyncHandler(async (req, res) => {
   const where: any = {};
   if (q) where.OR = [{ title: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
   if (categoryId) where.categoryId = categoryId;
-  if (sellerId) where.sellerId = sellerId;
+  
+  // Handle 'me' sellerId - replace with authenticated user's seller ID
+  let actualSellerId = sellerId;
+  if (sellerId === 'me') {
+    actualSellerId = req.headers['x-user-id'] as string;
+  }
+  if (actualSellerId) where.sellerId = actualSellerId;
+  
   if (brand) where.brand = { contains: brand, mode: 'insensitive' };
   if (subcategory) where.subcategory = { contains: subcategory, mode: 'insensitive' };
   if (minPrice || maxPrice) where.price = { ...(minPrice && { gte: minPrice }), ...(maxPrice && { lte: maxPrice }) };
@@ -72,7 +80,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/products - Create product (seller)
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', authMiddleware, asyncHandler(async (req, res) => {
   const sellerId = req.headers['x-user-id'] as string;
   if (!sellerId) {
     throw new ValidationError('Authentication required', { sellerId: ['Seller ID not found in request'] });
@@ -101,13 +109,27 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   const product = await prisma.product.create({
-    data: { ...data, sellerId: actualSellerId, slug, status: ProductStatus.PENDING_APPROVAL },
+    data: {
+      ...data,
+      sellerId: actualSellerId,
+      slug,
+      status: ProductStatus.ACTIVE,
+      inventory: {
+        create: {
+          sellerId: actualSellerId,
+          quantity: 0,
+          reserved: 0,
+          lowStockThreshold: 5,
+        },
+      },
+    },
+    include: { inventory: true },
   });
   res.status(201).json(product);
 }));
 
 // PATCH /api/products/:id - Update product
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', authMiddleware, asyncHandler(async (req, res) => {
   const data = UpdateProductDtoSchema.parse(req.body);
   const product = await prisma.product.update({
     where: { id: req.params.id },
@@ -116,8 +138,28 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   res.json(product);
 }));
 
+// PATCH /api/products/:id/approve - Approve/Reject product (admin)
+router.patch('/:id/approve', authMiddleware, asyncHandler(async (req, res) => {
+  const { action } = req.body; // 'approve' or 'reject'
+  const userRole = req.headers['x-user-role'] as string;
+  
+  if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
+    throw new ValidationError('Admin access required');
+  }
+
+  const newStatus = action === 'approve' ? ProductStatus.ACTIVE : ProductStatus.REJECTED;
+  
+  const product = await prisma.product.update({
+    where: { id: req.params.id },
+    data: { status: newStatus },
+    include: { inventory: true },
+  });
+  
+  res.json(product);
+}));
+
 // DELETE /api/products/:id - Delete product
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
   await prisma.product.delete({ where: { id: req.params.id } });
   res.json({ message: 'Product deleted' });
 }));
