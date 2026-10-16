@@ -28,7 +28,7 @@ type CheckoutForm = z.infer<typeof checkoutSchema>
 const paymentMethods = [
   { id: 'RAZORPAY', label: 'Razorpay', desc: 'Cards, Netbanking, UPI, Wallets', icon: CreditCard },
   { id: 'STRIPE', label: 'Stripe', desc: 'International cards & wallets', icon: CreditCard },
-  { id: 'UPI', label: 'UPI', desc: 'PhonePe, GPay, Paytm, BHIM', icon: Smartphone },
+  { id: 'UPI', label: 'UPI via Razorpay', desc: 'Pay with UPI in secure checkout', icon: Smartphone },
   { id: 'WALLET', label: 'TRADENEST Wallet', desc: 'Use your wallet balance', icon: Wallet },
 ]
 
@@ -80,6 +80,7 @@ export default function Checkout() {
         resolve(true)
         return
       }
+
       const script = document.createElement('script')
       script.src = 'https://checkout.razorpay.com/v1/checkout.js'
       script.onload = () => resolve(true)
@@ -143,24 +144,6 @@ export default function Checkout() {
     })
   }
 
-  const handleUPIPayment = async (upiIntent: string) => {
-    // For UPI, we can try to open the UPI app
-    // In production, this would integrate with Razorpay UPI or similar
-    toast.success('Opening UPI app... (simulated)')
-    
-    // Try to open UPI intent
-    if (upiIntent) {
-      window.location.href = upiIntent
-    }
-    
-    // Simulate payment completion
-    return new Promise<{ upiRef: string }>((resolve) => {
-      setTimeout(() => {
-        resolve({ upiRef: 'upi_' + Date.now() })
-      }, 3000)
-    })
-  }
-
   const handleWalletPayment = async (orderId: string, paymentId: string) => {
     // Wallet payment is processed on backend
     const result = await verifyPayment({
@@ -178,7 +161,16 @@ export default function Checkout() {
     try {
       // Step 1: Create the order from the authenticated server cart.
       const orderResult = await createOrder({
-        shippingAddressId: 'addr-home', // In real app, this would be the address ID
+        shippingAddress: {
+          fullName: data.fullName,
+          phone: data.phone,
+          line1: data.addressLine1,
+          line2: data.addressLine2,
+          city: data.city,
+          state: data.state,
+          postalCode: data.postalCode,
+          country: 'IN',
+        },
         paymentMethod: data.paymentMethod,
         couponCode: undefined,
       }).unwrap()
@@ -201,7 +193,7 @@ export default function Checkout() {
       // Step 3: Process payment based on method
       let verificationResult
 
-      if (data.paymentMethod === 'RAZORPAY') {
+      if (data.paymentMethod === 'RAZORPAY' || data.paymentMethod === 'UPI') {
         setStep(3)
         try {
           const razorpayResponse = await handleRazorpayPayment(
@@ -214,7 +206,7 @@ export default function Checkout() {
           // Verify payment on backend
           verificationResult = await verifyPayment({
             paymentId: paymentResult.paymentId,
-            provider: 'RAZORPAY',
+            provider: data.paymentMethod,
             providerRef: paymentResult.razorpayOrderId!,
             razorpayPaymentId: razorpayResponse.razorpay_payment_id,
             razorpaySignature: razorpayResponse.razorpay_signature,
@@ -236,19 +228,6 @@ export default function Checkout() {
           }).unwrap()
         } catch (err: any) {
           throw new Error(err.message || 'Stripe payment failed')
-        }
-      } else if (data.paymentMethod === 'UPI') {
-        setStep(3)
-        try {
-          const upiResponse = await handleUPIPayment(paymentResult.upiIntent!)
-          
-          verificationResult = await verifyPayment({
-            paymentId: paymentResult.paymentId,
-            provider: 'UPI',
-            providerRef: paymentResult.upiIntent!,
-          }).unwrap()
-        } catch (err: any) {
-          throw new Error(err.message || 'UPI payment failed')
         }
       } else if (data.paymentMethod === 'WALLET') {
         setStep(3)

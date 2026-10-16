@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateSlug, generateOrderNumber, generateOTP, calculateDiscount, formatCurrency, maskEmail, maskPhone } from '@tradenest/common';
+import { CreateOrderDtoSchema, generateSlug, generateOrderNumber, generateOTP, calculateDiscount, formatCurrency, maskEmail, maskPhone } from '@tradenest/common';
 
 describe('Common Utilities', () => {
   describe('generateSlug', () => {
@@ -83,6 +83,34 @@ describe('Common Utilities', () => {
 
     it('should handle short numbers', () => {
       expect(maskPhone('123')).toBe('123');
+    });
+  });
+
+  describe('CreateOrderDtoSchema', () => {
+    it('accepts a complete shipping address for checkout', () => {
+      const result = CreateOrderDtoSchema.safeParse({
+        shippingAddress: {
+          fullName: 'Test Customer',
+          phone: '9876543210',
+          line1: '12 Market Road',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          postalCode: '400001',
+        },
+        paymentMethod: 'RAZORPAY',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.shippingAddress.country).toBe('IN');
+      }
+    });
+
+    it('rejects checkout requests without shipping address details', () => {
+      expect(CreateOrderDtoSchema.safeParse({
+        shippingAddressId: 'addr-home',
+        paymentMethod: 'RAZORPAY',
+      }).success).toBe(false);
     });
   });
 });

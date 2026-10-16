@@ -99,7 +99,7 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
     actualSellerId = sellerId;
   }
 
-  const data = CreateProductDtoSchema.parse(req.body);
+  const { stockQuantity, ...data } = CreateProductDtoSchema.parse(req.body);
   
   const slugBase = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   let slug = slugBase;
@@ -117,7 +117,7 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
       inventory: {
         create: {
           sellerId: actualSellerId,
-          quantity: 0,
+          quantity: stockQuantity ?? 1,
           reserved: 0,
           lowStockThreshold: 5,
         },
@@ -130,10 +130,44 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
 
 // PATCH /api/products/:id - Update product
 router.patch('/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const data = UpdateProductDtoSchema.parse(req.body);
+  const { stockQuantity, ...data } = UpdateProductDtoSchema.parse(req.body);
+  const existingProduct = stockQuantity === undefined
+    ? null
+    : await prisma.product.findUnique({
+        where: { id: req.params.id },
+        include: { inventory: true },
+      });
+
+  if (stockQuantity !== undefined && !existingProduct) throw new NotFoundError('Product');
+  if (
+    stockQuantity !== undefined &&
+    existingProduct?.inventory &&
+    stockQuantity < existingProduct.inventory.reserved
+  ) {
+    throw new ValidationError('Stock quantity cannot be less than reserved stock');
+  }
+
   const product = await prisma.product.update({
     where: { id: req.params.id },
-    data,
+    data: {
+      ...data,
+      ...(stockQuantity !== undefined && existingProduct
+        ? {
+            inventory: {
+              upsert: {
+                create: {
+                  sellerId: existingProduct.sellerId,
+                  quantity: stockQuantity,
+                  reserved: 0,
+                  lowStockThreshold: 5,
+                },
+                update: { quantity: stockQuantity },
+              },
+            },
+          }
+        : {}),
+    },
+    include: { inventory: true },
   });
   res.json(product);
 }));

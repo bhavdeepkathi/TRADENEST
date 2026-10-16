@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 import { catalogRouter } from './modules/catalog/catalog.routes';
+import { productImagesRouter } from './modules/catalog/product-images.routes';
 import { categoryRouter } from './modules/category/category.routes';
 import { healthRouter } from './modules/health/health.routes';
 import { connectRedis } from './utils/redis';
@@ -49,6 +50,7 @@ async function bootstrap() {
   }
 
   app.use('/health', healthRouter);
+  app.use('/api/products/images', productImagesRouter);
   app.use('/api/products', catalogRouter);
   app.use('/api/categories', categoryRouter);
 

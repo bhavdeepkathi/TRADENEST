@@ -191,14 +191,18 @@ export const CreateProductDtoSchema = z.object({
   mrp: z.number().positive().max(999999.99).optional(),
   categoryId: z.string().regex(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{20,})$/i, 'Invalid category ID format'),
   tags: z.array(z.string().max(50)).max(20).default([]),
-  images: z.array(z.string().url()).max(10).default([]),
+  images: z.array(
+    z.string().url().or(z.string().regex(/^\/api\/products\/images\/[0-9a-f-]+\.(jpg|png|webp|gif)$/i))
+  ).max(10).default([]),
   discountPercent: z.number().int().min(0).max(100).default(0),
+  stockQuantity: z.number().int().nonnegative().optional(),
 });
 
 export type CreateProductDto = z.infer<typeof CreateProductDtoSchema>;
 
-export const UpdateProductDtoSchema = CreateProductDtoSchema.partial().extend({
+export const UpdateProductDtoSchema = CreateProductDtoSchema.omit({ stockQuantity: true }).partial().extend({
   status: z.nativeEnum(ProductStatus).optional(),
+  stockQuantity: z.number().int().nonnegative().optional(),
 });
 export type UpdateProductDto = z.infer<typeof UpdateProductDtoSchema>;
 
@@ -304,7 +308,16 @@ export type WishlistResponse = z.infer<typeof WishlistResponseSchema>;
 // ===========================================
 
 export const CreateOrderDtoSchema = z.object({
-  shippingAddressId: z.string().min(1),
+  shippingAddress: z.object({
+    fullName: z.string().min(2).max(200),
+    phone: z.string().min(10).max(20),
+    line1: z.string().min(5).max(200),
+    line2: z.string().max(200).optional(),
+    city: z.string().min(2).max(100),
+    state: z.string().min(2).max(100),
+    postalCode: z.string().regex(/^\d{6}$/),
+    country: z.string().length(2).default('IN'),
+  }),
   paymentMethod: z.nativeEnum(PaymentProvider),
   couponCode: z.string().max(50).optional(),
 });

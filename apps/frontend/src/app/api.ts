@@ -67,6 +67,7 @@ export const api = createApi({
         id: string
         title: string
         slug: string
+        categoryId: string
         brand: string
         subcategory: string
         description: string
@@ -93,6 +94,7 @@ export const api = createApi({
       id: string
       title: string
       slug: string
+      categoryId: string
       brand: string
       subcategory: string
       description: string
@@ -164,6 +166,7 @@ export const api = createApi({
       tags?: string[]
       images?: string[]
       discountPercent?: number
+      stockQuantity?: number
     }>({
       query: (body) => ({ url: '/products', method: 'POST', body }),
       invalidatesTags: ['Product'],
@@ -193,6 +196,7 @@ export const api = createApi({
       images?: string[]
       discountPercent?: number
       status?: string
+      stockQuantity?: number
     }}>({
       query: ({ id, body }) => ({ url: `/products/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['Product'],
@@ -200,6 +204,17 @@ export const api = createApi({
     deleteProduct: builder.mutation<{ message: string }, string>({
       query: (id) => ({ url: `/products/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Product'],
+    }),
+    uploadProductImage: builder.mutation<{ url: string }, File>({
+      query: (file) => ({
+        url: '/products/images',
+        method: 'POST',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      }),
+      transformResponse: (response: { url: string }) => ({
+        url: new URL(response.url, new URL(baseUrl, window.location.origin)).toString(),
+      }),
     }),
     
     // Categories
@@ -360,7 +375,20 @@ export const api = createApi({
         amount: number
         providerRef: string
       } | null
-    }, { shippingAddressId: string; paymentMethod: string; couponCode?: string }>({
+    }, {
+      shippingAddress: {
+        fullName: string
+        phone: string
+        line1: string
+        line2?: string
+        city: string
+        state: string
+        postalCode: string
+        country: string
+      }
+      paymentMethod: string
+      couponCode?: string
+    }>({
       query: (body) => ({ url: '/orders', method: 'POST', body }),
       invalidatesTags: ['Order', 'Cart'],
     }),
@@ -446,4 +474,5 @@ export const {
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
+  useUploadProductImageMutation,
 } = api

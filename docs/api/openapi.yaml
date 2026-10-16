@@ -280,9 +280,20 @@ paths:
           application/json:
             schema:
               type: object
-              required: [shippingAddressId, paymentMethod]
+              required: [shippingAddress, paymentMethod]
               properties:
-                shippingAddressId: {type: string}
+                shippingAddress:
+                  type: object
+                  required: [fullName, phone, line1, city, state, postalCode, country]
+                  properties:
+                    fullName: {type: string}
+                    phone: {type: string}
+                    line1: {type: string}
+                    line2: {type: string}
+                    city: {type: string}
+                    state: {type: string}
+                    postalCode: {type: string}
+                    country: {type: string}
                 paymentMethod: {type: string, enum: [RAZORPAY, STRIPE, UPI, WALLET]}
                 couponCode: {type: string}
       responses:

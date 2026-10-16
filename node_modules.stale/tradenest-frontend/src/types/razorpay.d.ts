@@ -23,6 +23,7 @@ interface RazorpayOptions {
 
 interface RazorpayInstance {
   open(): void;
+  on(event: 'payment.failed', handler: (response: { error: { description: string } }) => void): void;
 }
 
 interface Window {

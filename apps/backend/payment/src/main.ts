@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import paymentRoutes from './modules/razorpay';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 
@@ -16,6 +17,7 @@ import { logger } from './utils/logger';
 
 async function bootstrap() {
   const app = express();
+  app.use('/api/payment', paymentRoutes);
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
   app.use(cors({ origin: config.CORS_ORIGIN, credentials: true }));

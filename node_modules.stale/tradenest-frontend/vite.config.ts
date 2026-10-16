@@ -30,8 +30,16 @@ export default defineConfig({
         target: 'http://localhost:4002',
         changeOrigin: true,
       },
+      '/api/orders': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/api/cart': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
       '/api': {
-        target: 'http://localhost:4004',
+        target: 'http://localhost:4000',
         changeOrigin: true,
       },
     },

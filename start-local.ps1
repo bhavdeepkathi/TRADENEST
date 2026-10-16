@@ -45,6 +45,18 @@ Write-Host "Starting services..." -ForegroundColor Cyan
 $root = $PSScriptRoot
 if (-not $root) { $root = Get-Location }
 
+# Product uploads require the persistent MinIO object store.
+Write-Host "Starting MinIO object storage..." -ForegroundColor Yellow
+Push-Location $root
+try {
+    docker compose up -d minio
+    if ($LASTEXITCODE -ne 0) {
+        throw "MinIO could not be started"
+    }
+} finally {
+    Pop-Location
+}
+
 # The local compose database starts empty; create the Prisma tables before the
 # catalog service receives requests.
 Write-Host "Applying database schema..." -ForegroundColor Yellow

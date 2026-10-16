@@ -48,128 +48,125 @@ router.post('/', asyncHandler(async (req, res) => {
   const data = CreateOrderDtoSchema.parse(req.body);
   const userId = req.headers['x-user-id'] as string;
 
-  // Fetch user's cart with products
-  const cart = await prisma.cart.findUnique({
-    where: { userId },
-    include: {
-      items: {
-        include: {
-          product: {
-            include: {
-              inventory: true,
-              category: true,
-              seller: true,
+  const order = await prisma.$transaction(async (tx) => {
+    const cart = await tx.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: {
+                inventory: true,
+                category: true,
+                seller: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!cart || cart.items.length === 0) {
-    throw new ValidationError('Cart is empty');
-  }
-
-  // Validate inventory and calculate totals
-  let subtotal = 0;
-  const orderItems = [];
-
-  for (const cartItem of cart.items) {
-    const product = cartItem.product;
-    
-    if (product.status !== 'ACTIVE') {
-      throw new ValidationError(`Product "${product.title}" is no longer available`);
+    if (!cart || cart.items.length === 0) {
+      throw new ValidationError('Cart is empty');
     }
 
-    if (!product.inventory || product.inventory.quantity < cartItem.quantity) {
-      throw new ValidationError(`Insufficient stock for "${product.title}"`);
+    let subtotal = 0;
+    const orderItems = [];
+
+    for (const cartItem of cart.items) {
+      const product = cartItem.product;
+
+      if (product.status !== 'ACTIVE') {
+        throw new ValidationError(`Product "${product.title}" is no longer available`);
+      }
+
+      if (!product.inventory) {
+        throw new ValidationError(`Insufficient stock for "${product.title}"`);
+      }
+
+      const pendingReservations = await tx.orderItem.aggregate({
+        where: { productId: product.id, order: { status: OrderStatus.PENDING } },
+        _sum: { quantity: true },
+      });
+      const reserved = pendingReservations._sum.quantity ?? 0;
+      if (product.inventory.reserved !== reserved) {
+        await tx.inventory.update({
+          where: { productId: product.id },
+          data: { reserved },
+        });
+      }
+      if (product.inventory.quantity - reserved < cartItem.quantity) {
+        throw new ValidationError(`Insufficient stock for "${product.title}"`);
+      }
+
+      const itemSubtotal = Number(product.price) * cartItem.quantity;
+      subtotal += itemSubtotal;
+
+      orderItems.push({
+        productId: product.id,
+        sellerId: product.sellerId,
+        title: product.title,
+        price: product.price,
+        quantity: cartItem.quantity,
+        discount: 0,
+      });
+
+      await tx.inventory.update({
+        where: { productId: product.id },
+        data: { reserved: { increment: cartItem.quantity } },
+      });
     }
 
-    const itemSubtotal = Number(product.price) * cartItem.quantity;
-    subtotal += itemSubtotal;
+    const shipping = subtotal > 499 ? 0 : 99;
+    const tax = 0;
+    const total = subtotal + shipping + tax;
+    let discount = 0;
+    let couponCode = null;
 
-    orderItems.push({
-      productId: product.id,
-      sellerId: product.sellerId,
-      title: product.title,
-      price: product.price,
-      quantity: cartItem.quantity,
-      discount: 0,
-    });
+    if (data.couponCode) {
+      const coupon = await tx.coupon.findUnique({
+        where: { code: data.couponCode },
+        include: { usages: { where: { userId } } },
+      });
 
-    // Reserve inventory
-    await prisma.inventory.update({
-      where: { productId: product.id },
-      data: { reserved: { increment: cartItem.quantity } },
-    });
-  }
-
-  // Calculate shipping and tax
-  const shipping = subtotal > 499 ? 0 : 99;
-  const tax = 0;
-  const total = subtotal + shipping + tax;
-
-  // Validate coupon if provided
-  let discount = 0;
-  let couponCode = null;
-  
-  if (data.couponCode) {
-    const coupon = await prisma.coupon.findUnique({
-      where: { code: data.couponCode },
-      include: { usages: { where: { userId } } },
-    });
-
-    if (coupon && coupon.isActive && new Date() >= coupon.startAt && new Date() <= coupon.endAt) {
-      if (!coupon.usages.some(u => u.userId === userId) || coupon.usageLimit > coupon.usedCount) {
-        if (Number(coupon.minOrder || 0) <= subtotal) {
-          if (coupon.type === 'PERCENT') {
-            discount = Math.min(Math.round(subtotal * Number(coupon.value) / 100), Number(coupon.maxDiscount || 999999));
-          } else {
-            discount = Math.min(Number(coupon.value), subtotal);
+      if (coupon && coupon.isActive && new Date() >= coupon.startAt && new Date() <= coupon.endAt) {
+        if (!coupon.usages.some(u => u.userId === userId) || coupon.usageLimit > coupon.usedCount) {
+          if (Number(coupon.minOrder || 0) <= subtotal) {
+            if (coupon.type === 'PERCENT') {
+              discount = Math.min(Math.round(subtotal * Number(coupon.value) / 100), Number(coupon.maxDiscount || 999999));
+            } else {
+              discount = Math.min(Number(coupon.value), subtotal);
+            }
+            couponCode = coupon.code;
           }
-          couponCode = coupon.code;
         }
       }
     }
-  }
 
-  const finalTotal = total - discount;
+    const finalTotal = total - discount;
 
-  // Get user's default address for shipping/billing
-  const address = await prisma.address.findFirst({
-    where: { userId, isDefault: true },
-  });
+    const shippingAddress = { ...data.shippingAddress };
+    const billingAddress = { ...shippingAddress };
 
-  const shippingAddress = address ? {
-    line1: address.line1,
-    line2: address.line2,
-    city: address.city,
-    state: address.state,
-    postalCode: address.postalCode,
-    country: address.country,
-  } : {};
-
-  const billingAddress = { ...shippingAddress };
-
-  // Create order with PENDING status - payment will be verified separately
-  const order = await prisma.order.create({
-    data: {
-      userId,
-      status: OrderStatus.PENDING,
-      subtotal,
-      tax,
-      shipping,
-      discount,
-      total: finalTotal,
-      couponCode,
-      shippingAddress,
-      billingAddress,
-      items: { create: orderItems },
-    },
-    include: {
-      items: { include: { product: true } },
-      payment: true,
-    },
+    return tx.order.create({
+      data: {
+        userId,
+        status: OrderStatus.PENDING,
+        subtotal,
+        tax,
+        shipping,
+        discount,
+        total: finalTotal,
+        couponCode,
+        shippingAddress,
+        billingAddress,
+        items: { create: orderItems },
+      },
+      include: {
+        items: { include: { product: true } },
+        payment: true,
+      },
+    });
   });
 
   res.status(201).json(order);
@@ -178,43 +175,72 @@ router.post('/', asyncHandler(async (req, res) => {
 // POST /api/orders/:id/confirm-payment - Confirm payment and update order status
 router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
   const userId = req.headers['x-user-id'] as string;
-  const { paymentId, providerRef, provider } = req.body;
+  const { paymentId, provider } = req.body;
 
-  const order = await prisma.order.findUnique({
-    where: { id: req.params.id },
-    include: { items: true, payment: true },
-  });
-
-  if (!order) throw new NotFoundError('Order');
-  if (order.userId !== userId) throw new ValidationError('Unauthorized');
-  if (order.payment && order.payment.status === PaymentStatus.SUCCESS) {
-    throw new ValidationError('Payment already confirmed');
-  }
-
-  // Verify payment with provider (in real implementation, call provider API)
-  // For now, we'll trust the backend verification that happens in payment service
-  
-  // Update inventory - convert reserved to sold
-  for (const item of order.items) {
-    await prisma.inventory.update({
-      where: { productId: item.productId },
-      data: {
-        quantity: { decrement: item.quantity },
-        reserved: { decrement: item.quantity },
-      },
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: req.params.id },
+      include: { items: true, payment: true },
     });
-  }
 
-  // Update order status to CONFIRMED
-  const updatedOrder = await prisma.order.update({
-    where: { id: order.id },
-    data: { status: OrderStatus.CONFIRMED },
-    include: { items: { include: { product: true } }, payment: true },
-  });
+    if (!order) throw new NotFoundError('Order');
+    if (order.userId !== userId) throw new ValidationError('Unauthorized');
+    if (!order.payment || order.payment.status !== PaymentStatus.SUCCESS) {
+      throw new ValidationError('Payment has not been verified');
+    }
+    if (
+      (order.payment.provider === PaymentProvider.RAZORPAY || order.payment.provider === PaymentProvider.UPI) &&
+      (
+        !order.payment.rawResponse ||
+        typeof order.payment.rawResponse !== 'object' ||
+        Array.isArray(order.payment.rawResponse) ||
+        !('razorpayPaymentId' in order.payment.rawResponse) ||
+        !('razorpaySignature' in order.payment.rawResponse)
+      )
+    ) {
+      throw new ValidationError('Payment has not been verified');
+    }
+    if (paymentId && paymentId !== order.payment.id) {
+      throw new ValidationError('Payment does not match order');
+    }
+    if (provider && provider !== order.payment.provider) {
+      throw new ValidationError('Payment provider does not match order');
+    }
+    if (order.status === OrderStatus.CONFIRMED) return order;
+    if (order.status !== OrderStatus.PENDING) {
+      throw new ValidationError('Order cannot be confirmed in its current state');
+    }
 
-  // Clear user's cart
-  await prisma.cartItem.deleteMany({
-    where: { cartId: (await prisma.cart.findUnique({ where: { userId } }))?.id || '' },
+    const claimed = await tx.order.updateMany({
+      where: { id: order.id, status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CONFIRMED },
+    });
+    if (claimed.count !== 1) {
+      const currentOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { items: { include: { product: true } }, payment: true },
+      });
+      if (currentOrder?.status === OrderStatus.CONFIRMED) return currentOrder;
+      throw new ValidationError('Order could not be confirmed');
+    }
+
+    for (const item of order.items) {
+      await tx.inventory.update({
+        where: { productId: item.productId },
+        data: {
+          quantity: { decrement: item.quantity },
+          reserved: { decrement: item.quantity },
+        },
+      });
+    }
+
+    const cart = await tx.cart.findUnique({ where: { userId } });
+    if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+
+    return tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { items: { include: { product: true } }, payment: true },
+    });
   });
 
   res.json(updatedOrder);

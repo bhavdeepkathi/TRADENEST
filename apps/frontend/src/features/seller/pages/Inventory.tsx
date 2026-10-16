@@ -1,7 +1,7 @@
-import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw } from 'lucide-react'
+import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw, Save } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useGetSellerProductsQuery, useDeleteProductMutation } from '../../../app/api'
+import { useGetSellerProductsQuery, useDeleteProductMutation, useUpdateProductMutation } from '../../../app/api'
 import toast from 'react-hot-toast'
 
 const statusStyles: Record<string, string> = {
@@ -31,10 +31,12 @@ export default function Inventory() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [stockValues, setStockValues] = useState<Record<string, string>>({})
   const navigate = useNavigate()
 
   const { data, isLoading, error, refetch } = useGetSellerProductsQuery({ page, limit: 10, status: statusFilter !== 'all' ? statusFilter : undefined })
   const [deleteProduct] = useDeleteProductMutation()
+  const [updateProduct, { isLoading: isUpdatingStock }] = useUpdateProductMutation()
 
   const products = data?.data || []
   const meta = data?.meta
@@ -84,6 +86,26 @@ export default function Inventory() {
 
   const handleEdit = (id: string) => {
     navigate(`/seller/products/${id}/edit`)
+  }
+
+  const handleUpdateStock = async (id: string, currentQuantity: number) => {
+    const quantity = Number(stockValues[id] ?? currentQuantity)
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      toast.error('Enter a valid non-negative stock quantity')
+      return
+    }
+
+    try {
+      await updateProduct({ id, body: { stockQuantity: quantity } }).unwrap()
+      setStockValues((values) => {
+        const nextValues = { ...values }
+        delete nextValues[id]
+        return nextValues
+      })
+      toast.success('Stock updated successfully')
+    } catch {
+      toast.error('Failed to update stock')
+    }
   }
 
   return (
@@ -184,7 +206,27 @@ export default function Inventory() {
                         </td>
                         <td className="p-4 text-sm text-secondary-700 dark:text-secondary-300">{product.category?.name || 'General'}</td>
                         <td className="p-4 text-sm font-medium text-secondary-900 dark:text-secondary-50">₹{product.price.toLocaleString()}</td>
-                        <td className="p-4 text-sm text-secondary-700 dark:text-secondary-300">{product.inventory?.quantity ?? 0}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={stockValues[product.id] ?? String(product.inventory?.quantity ?? 0)}
+                              onChange={(event) => setStockValues((values) => ({ ...values, [product.id]: event.target.value }))}
+                              className="input w-20"
+                              aria-label={`Stock quantity for ${product.title}`}
+                            />
+                            <button
+                              onClick={() => handleUpdateStock(product.id, product.inventory?.quantity ?? 0)}
+                              disabled={isUpdatingStock}
+                              className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-700 disabled:opacity-50"
+                              aria-label={`Save stock quantity for ${product.title}`}
+                            >
+                              <Save className="h-4 w-4 text-primary-600" />
+                            </button>
+                          </div>
+                        </td>
                         <td className="p-4">
                           <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', statusStyles[getStockStatus(product)])}>
                             {getStockStatus(product).replace('_', ' ')}

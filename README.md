@@ -54,14 +54,15 @@ npm run db:seed
 To add the 250-product marketplace demo catalog without removing existing products,
 run `npm run db:seed:complete`.
 
-To run the backend as local Node processes instead of in Docker, start PostgreSQL
-and Redis with `docker compose up -d postgres redis`, apply the schema with
+To run the backend as local Node processes instead of in Docker, start PostgreSQL,
+Redis, and the MinIO image store with `docker compose up -d postgres redis minio`, apply the schema with
 `npm run db:push`, then run `npm run dev:backend`. Start the frontend separately
 with `npm run dev:frontend`, and keep both processes running while using the app.
 Vite forwards `/api` requests to the gateway on port 4000; the gateway forwards
 authentication requests to the auth service on port 4001. Starting only the
 frontend causes API requests to fail with a Vite proxy connection error.
-The local backend services use ports 4000–4006.
+The local backend services use ports 4000–4006. MinIO stores uploaded product
+images so they remain available after the seller browser session ends.
 
 **Test accounts** (seeded):
 | Role | Email | Password |

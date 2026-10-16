@@ -5,6 +5,8 @@ import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError } from '@tradenest/common';
 import { CreatePaymentIntentDtoSchema, RefundDtoSchema, PaymentProvider, PaymentStatus } from '@tradenest/common';
 import { config } from '../../config';
+import Razorpay from 'razorpay';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const router = Router();
 function validate(schema: z.ZodSchema) { return (req: any, res: any, next: any) => { const result = schema.safeParse(req.body); if (!result.success) throw new ValidationError('Invalid request data', result.error.flatten().fieldErrors); req.body = result.data; next(); }; }
@@ -16,7 +18,7 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
   // Fetch order to get amount
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new NotFoundError('Order');
-  if (order.total <= 0) throw new ValidationError('Invalid order amount');
+  if (Number(order.total) <= 0) throw new ValidationError('Invalid order amount');
 
   const amountInPaise = Math.round(Number(order.total) * 100); // Convert to paise for Razorpay/Stripe
   
@@ -25,25 +27,27 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
   // Check if payment already exists for this order
   let payment = await prisma.payment.findUnique({ where: { orderId } });
   
-  if (provider === PaymentProvider.RAZORPAY) {
-    if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+  if (provider === PaymentProvider.RAZORPAY || provider === PaymentProvider.UPI) {
+    if (
+      !config.RAZORPAY_KEY_ID ||
+      !config.RAZORPAY_KEY_SECRET ||
+      config.RAZORPAY_KEY_ID.includes('your_key_id')
+    ) {
       throw new ValidationError('Razorpay not configured');
     }
-    
-    // In production, use actual Razorpay SDK
-    // const Razorpay = require('razorpay');
-    // const razorpay = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET });
-    // const razorpayOrder = await razorpay.orders.create({ 
-    //   amount: amountInPaise, 
-    //   currency: 'INR', 
-    //   receipt: orderId,
-    //   notes: { orderId }
-    // });
-    // response.razorpayOrderId = razorpayOrder.id;
-    // response.razorpayKeyId = config.RAZORPAY_KEY_ID;
-    
-    // Mock for development
-    response.razorpayOrderId = 'order_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    const razorpay = new Razorpay({
+      key_id: config.RAZORPAY_KEY_ID,
+      key_secret: config.RAZORPAY_KEY_SECRET,
+    });
+    const razorpayOrder = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: orderId,
+      notes: { orderId },
+    });
+
+    response.razorpayOrderId = razorpayOrder.id;
     response.razorpayKeyId = config.RAZORPAY_KEY_ID;
   } else if (provider === PaymentProvider.STRIPE) {
     if (!config.STRIPE_SECRET_KEY) {
@@ -109,23 +113,25 @@ router.post('/verify', asyncHandler(async (req, res) => {
   let verified = false;
   let verifiedAmount = 0;
   
-  if (provider === PaymentProvider.RAZORPAY) {
-    // In production, verify Razorpay signature
-    // const crypto = require('crypto');
-    // const expectedSignature = crypto
-    //   .createHmac('sha256', config.RAZORPAY_KEY_SECRET)
-    //   .update(`${providerRef}|${razorpayPaymentId}`)
-    //   .digest('hex');
-    // verified = expectedSignature === razorpaySignature;
-    // if (verified) {
-    //   const razorpay = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET });
-    //   const rpPayment = await razorpay.payments.fetch(razorpayPaymentId);
-    //   verifiedAmount = rpPayment.amount / 100;
-    // }
-    
-    // Mock verification for development
-    verified = true;
-    verifiedAmount = Number(payment.amount);
+  if (provider === PaymentProvider.RAZORPAY || provider === PaymentProvider.UPI) {
+    if (
+      !config.RAZORPAY_KEY_SECRET ||
+      !razorpayPaymentId ||
+      !razorpaySignature ||
+      !providerRef ||
+      providerRef !== payment.providerRef ||
+      payment.provider !== provider
+    ) {
+      throw new ValidationError('Payment verification failed');
+    }
+
+    const expectedSignature = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
+      .update(`${providerRef}|${razorpayPaymentId}`)
+      .digest();
+    const receivedSignature = Buffer.from(razorpaySignature, 'hex');
+    verified = receivedSignature.length === expectedSignature.length &&
+      timingSafeEqual(receivedSignature, expectedSignature);
+    if (verified) verifiedAmount = Number(payment.amount);
   } else if (provider === PaymentProvider.STRIPE) {
     // In production, verify with Stripe
     // const stripe = new Stripe(config.STRIPE_SECRET_KEY);
@@ -134,11 +140,6 @@ router.post('/verify', asyncHandler(async (req, res) => {
     // if (verified) verifiedAmount = paymentIntent.amount / 100;
     
     // Mock verification for development
-    verified = true;
-    verifiedAmount = Number(payment.amount);
-  } else if (provider === PaymentProvider.UPI) {
-    // UPI verification would typically be done via webhook
-    // For now, mock verification
     verified = true;
     verifiedAmount = Number(payment.amount);
   } else if (provider === PaymentProvider.WALLET) {
@@ -172,10 +173,12 @@ router.post('/verify', asyncHandler(async (req, res) => {
   }
   
   if (!verified) {
-    await prisma.payment.update({
-      where: { id: paymentId },
-      data: { status: PaymentStatus.FAILED, rawResponse: req.body },
-    });
+    if (provider !== PaymentProvider.RAZORPAY && provider !== PaymentProvider.UPI) {
+      await prisma.payment.update({
+        where: { id: paymentId },
+        data: { status: PaymentStatus.FAILED, rawResponse: req.body },
+      });
+    }
     throw new ValidationError('Payment verification failed');
   }
   
@@ -189,7 +192,9 @@ router.post('/verify', asyncHandler(async (req, res) => {
     where: { id: paymentId },
     data: { 
       status: PaymentStatus.SUCCESS, 
-      providerRef: razorpayPaymentId || stripePaymentIntentId || providerRef,
+      providerRef: provider === PaymentProvider.STRIPE
+        ? stripePaymentIntentId || providerRef
+        : payment.providerRef,
       rawResponse: req.body,
     },
     include: { order: true },

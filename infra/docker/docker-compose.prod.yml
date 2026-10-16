@@ -245,12 +245,20 @@ services:
       REDIS_URL: redis://:${PROD_REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${PROD_JWT_SECRET}
       CORS_ORIGIN: ${PROD_FRONTEND_URL:-https://tradenest.io}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: ${PROD_MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${PROD_MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${PROD_MINIO_BUCKET:-tradenest}
+      MINIO_USE_SSL: "false"
     networks:
       - tradenest-prod-network
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   # Backend Order - production

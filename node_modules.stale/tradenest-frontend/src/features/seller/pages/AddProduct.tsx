@@ -5,7 +5,7 @@ import { X, Camera, Loader2, Save, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../../../app/api'
+import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUploadProductImageMutation } from '../../../app/api'
 
 const productSchema = z.object({
   title: z.string().min(3, 'Product name must be at least 3 characters'),
@@ -16,8 +16,11 @@ const productSchema = z.object({
   price: z.number().min(0.01, 'Price must be greater than 0'),
   mrp: z.number().optional(),
   discountPercent: z.number().min(0).max(100).default(0),
+  stockQuantity: z.number().int().min(0, 'Stock cannot be negative'),
   tags: z.string().optional(),
-  images: z.array(z.string().url()).max(10).default([]),
+  images: z.array(
+    z.string().url().or(z.string().regex(/^\/api\/products\/images\/[0-9a-f-]+\.(jpg|png|webp|gif)$/i))
+  ).max(10).default([]),
 })
 
 type ProductForm = z.infer<typeof productSchema>
@@ -31,6 +34,7 @@ const initialValues: ProductForm = {
   price: 0,
   mrp: undefined,
   discountPercent: 0,
+  stockQuantity: 1,
   tags: '',
   images: [],
 }
@@ -39,7 +43,7 @@ export default function AddProduct() {
   const navigate = useNavigate()
   const params = useParams()
   const isEditing = !!params.id
-  const [images, setImages] = useState<File[]>([])
+  const [pendingImageFiles, setPendingImageFiles] = useState<Record<string, File>>({})
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -47,41 +51,73 @@ export default function AddProduct() {
   const { data: productData, isLoading: productLoading } = useGetProductQuery(params.id || '', { skip: !isEditing })
   const [createProduct] = useCreateProductMutation()
   const [updateProduct] = useUpdateProductMutation()
-
-  // Populate form when editing
-  useEffect(() => {
-    if (isEditing && productData) {
-      // Note: In a real app, you'd fetch the full product details including categoryId
-      // For now, we'll just populate what we can
-    }
-  }, [isEditing, productData])
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    const validFiles = files.filter((f) => f.type.startsWith('image/') && f.size <= 5 * 1024 * 1024)
-    if (validFiles.length + images.length > 10) {
-      toast.error('Maximum 10 images allowed')
-      return
-    }
-    setImages((prev) => [...prev, ...validFiles])
-    validFiles.forEach((file) => {
-      setImageUrls((prev) => [...prev, URL.createObjectURL(file)])
-    })
-  }
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index))
-    setImageUrls((prev) => prev.filter((_, i) => i !== index))
-  }
+  const [uploadProductImage] = useUploadProductImageMutation()
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
     defaultValues: initialValues,
   })
+
+  useEffect(() => {
+    if (isEditing && productData) {
+      const savedImageUrls = productData.images.filter((url) => !url.startsWith('blob:'))
+      reset({
+        ...initialValues,
+        title: productData.title,
+        description: productData.description,
+        categoryId: productData.categoryId,
+        brand: productData.brand,
+        subcategory: productData.subcategory,
+        price: Number(productData.price),
+        mrp: productData.mrp == null ? undefined : Number(productData.mrp),
+        discountPercent: productData.discountPercent,
+        stockQuantity: productData.inventory?.quantity ?? 0,
+        tags: productData.tags.join(', '),
+        images: savedImageUrls,
+      })
+      setImageUrls(savedImageUrls)
+    }
+  }, [isEditing, productData, reset])
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    const validFiles = files.filter((file) => supportedTypes.includes(file.type) && file.size <= 5 * 1024 * 1024)
+    if (validFiles.length !== files.length) {
+      toast.error('Use JPEG, PNG, WebP, or GIF images up to 5MB each')
+    }
+    if (validFiles.length + imageUrls.length > 10) {
+      toast.error('Maximum 10 images allowed')
+      return
+    }
+    const newFiles: Record<string, File> = {}
+    const newUrls = validFiles.map((file) => {
+      const url = URL.createObjectURL(file)
+      newFiles[url] = file
+      return url
+    })
+    setPendingImageFiles((previous) => ({ ...previous, ...newFiles }))
+    setImageUrls((previous) => [...previous, ...newUrls])
+    e.target.value = ''
+  }
+
+  const removeImage = (index: number) => {
+    const url = imageUrls[index]
+    if (pendingImageFiles[url]) {
+      URL.revokeObjectURL(url)
+      setPendingImageFiles((previous) => {
+        const next = { ...previous }
+        delete next[url]
+        return next
+      })
+    }
+    setImageUrls((previous) => previous.filter((_, i) => i !== index))
+  }
 
   const onSubmit = async (data: ProductForm) => {
     setIsSubmitting(true)
@@ -96,14 +132,17 @@ export default function AddProduct() {
         mrp: data.mrp,
         discountPercent: data.discountPercent,
         tags: data.tags ? data.tags.split(',').map(t => t.trim()) : [],
-        images: imageUrls,
+        images: await Promise.all(imageUrls.map(async (url) => {
+          const file = pendingImageFiles[url]
+          return file ? (await uploadProductImage(file).unwrap()).url : url
+        })),
       }
 
       if (isEditing) {
         await updateProduct({ id: params.id!, body: payload }).unwrap()
         toast.success('Product updated successfully!')
       } else {
-        await createProduct(payload).unwrap()
+        await createProduct({ ...payload, stockQuantity: data.stockQuantity }).unwrap()
         toast.success('Product created successfully!')
       }
       navigate('/seller/inventory')
@@ -233,17 +272,37 @@ export default function AddProduct() {
                 placeholder="0"
               />
             </div>
+            {!isEditing && (
+              <div>
+                <label className="block mb-1.5 text-sm font-medium text-secondary-700 dark:text-secondary-300">Initial Stock *</label>
+                <input
+                  {...register('stockQuantity', { valueAsNumber: true })}
+                  type="number"
+                  step="1"
+                  min="0"
+                  className="input"
+                  placeholder="1"
+                  aria-invalid={!!errors.stockQuantity}
+                />
+                {errors.stockQuantity && <p className="mt-1 text-sm text-red-500">{errors.stockQuantity.message}</p>}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Images */}
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-secondary-900 dark:text-secondary-50 mb-6">Product Images</h2>
+          {isEditing && productData?.images.some((url) => url.startsWith('blob:')) && (
+            <p className="mb-4 text-sm text-amber-700 dark:text-amber-400">
+              This product has temporary images that are no longer available. Upload them again to restore the photos.
+            </p>
+          )}
           <div className="border-2 border-dashed border-secondary-300 dark:border-secondary-600 rounded-xl p-8">
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               onChange={handleImageUpload}
               className="hidden"
               id="image-upload"
@@ -252,24 +311,24 @@ export default function AddProduct() {
               htmlFor="image-upload"
               className={clsx(
                 'flex flex-col items-center justify-center cursor-pointer transition-colors',
-                images.length > 0 ? 'bg-secondary-50 dark:bg-secondary-800/50' : ''
+                imageUrls.length > 0 ? 'bg-secondary-50 dark:bg-secondary-800/50' : ''
               )}
             >
-              {images.length === 0 ? (
+              {imageUrls.length === 0 ? (
                 <>
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30 mb-4">
                     <Camera className="h-8 w-8 text-primary-600 dark:text-primary-400" />
                   </div>
                   <p className="text-secondary-600 dark:text-secondary-400 mb-2">Drag & drop images here, or click to browse</p>
-                  <p className="text-xs text-secondary-400">Max 10 images, 5MB each. PNG, JPG, WebP supported.</p>
+                  <p className="text-xs text-secondary-400">Max 10 images, 5MB each. JPEG, PNG, WebP, GIF supported.</p>
                 </>
               ) : (
-                <p className="text-secondary-600 dark:text-secondary-400">Click to add more images ({images.length}/10)</p>
+                <p className="text-secondary-600 dark:text-secondary-400">Click to add more images ({imageUrls.length}/10)</p>
               )}
             </label>
           </div>
 
-          {(images.length > 0 || imageUrls.length > 0) && (
+          {imageUrls.length > 0 && (
             <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {imageUrls.map((url, index) => (
                 <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-secondary-100 dark:bg-secondary-800">

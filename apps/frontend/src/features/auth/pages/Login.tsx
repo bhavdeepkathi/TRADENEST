@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
 import { useLoginMutation } from '../../../app/api'
 import { api } from '../../../app/api'
-import { setCredentials, setLoading } from '../authSlice'
+import { logout, setCredentials, setLoading } from '../authSlice'
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -36,8 +36,8 @@ export default function Login() {
     try {
       const result = await login(data).unwrap()
       const payload = JSON.parse(atob(result.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+      dispatch(api.util.resetApiState())
       
-      // Store tokens first, then fetch user profile
       const tempUser = {
         id: payload.sub,
         email: data.email,
@@ -51,21 +51,25 @@ export default function Login() {
         refreshToken: result.refreshToken,
       }))
       
-      // Fetch actual user profile
-      try {
-        const meResult = await dispatch(api.endpoints.getMe.initiate()).unwrap()
-        dispatch(setCredentials({
-          user: {
-            ...tempUser,
-            firstName: meResult.firstName,
-            lastName: meResult.lastName,
-          },
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-        }))
-      } catch {
-        // If /me fails, keep temp user
+      const meResult = await dispatch(
+        api.endpoints.getMe.initiate(undefined, { forceRefetch: true })
+      ).unwrap()
+      if (meResult.id !== payload.sub || meResult.email.toLowerCase() !== data.email.toLowerCase()) {
+        throw new Error('The signed-in account profile did not match the login')
       }
+      dispatch(setCredentials({
+        user: {
+          id: meResult.id,
+          email: meResult.email,
+          firstName: meResult.firstName,
+          lastName: meResult.lastName,
+          role: meResult.role as typeof tempUser.role,
+          avatarUrl: meResult.avatarUrl ?? undefined,
+          phone: meResult.phone ?? undefined,
+        },
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+      }))
       
       toast.success('Welcome back!')
       
@@ -75,6 +79,8 @@ export default function Login() {
       const finalPath = from?.pathname ?? redirectPath
       navigate(`${finalPath}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
     } catch (error) {
+      dispatch(logout())
+      dispatch(api.util.resetApiState())
       const message =
         typeof error === 'object' &&
         error !== null &&

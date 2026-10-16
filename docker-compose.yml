@@ -120,10 +120,18 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
       - CORS_ORIGIN=http://localhost:3000
       - LOG_LEVEL=debug
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-tradenest}
+      - MINIO_USE_SSL=false
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - tradenest-network
@@ -277,4 +285,3 @@ volumes:
 networks:
   tradenest-network:
     driver: bridge
-
