@@ -1,76 +1,121 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../utils/prisma';
 import { asyncHandler } from '../../middlewares/errorHandler';
-import { NotFoundError, ValidationError } from '@tradenest/common';
+import { ExternalServiceError, NotFoundError, ValidationError } from '@tradenest/common';
 import { CreatePaymentIntentDtoSchema, RefundDtoSchema, PaymentProvider, PaymentStatus } from '@tradenest/common';
 import { config } from '../../config';
+import { logger } from '../../utils/logger';
 import Razorpay from 'razorpay';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const router = Router();
 function validate(schema: z.ZodSchema) { return (req: any, res: any, next: any) => { const result = schema.safeParse(req.body); if (!result.success) throw new ValidationError('Invalid request data', result.error.flatten().fieldErrors); req.body = result.data; next(); }; }
 
+const verifyPaymentSchema = z.object({
+  paymentId: z.string().min(1),
+  provider: z.nativeEnum(PaymentProvider),
+  providerRef: z.string().min(1),
+  razorpayPaymentId: z.string().optional(),
+  razorpaySignature: z.string().optional(),
+});
+
+const razorpayWebhookSchema = z.object({
+  event: z.string(),
+  payload: z.object({
+    payment: z.object({
+      entity: z.object({
+        id: z.string(),
+        order_id: z.string().optional(),
+        amount: z.number().int().nonnegative(),
+        currency: z.string().optional(),
+      }).passthrough(),
+    }).optional(),
+  }).optional(),
+}).passthrough();
+
+function getRazorpayCredentials() {
+  const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = config;
+  if (!RAZORPAY_KEY_ID?.trim() || !RAZORPAY_KEY_SECRET?.trim()) {
+    throw new ValidationError('Razorpay is not configured');
+  }
+
+  return { keyId: RAZORPAY_KEY_ID, keySecret: RAZORPAY_KEY_SECRET };
+}
+
+function getRazorpayClient(): Razorpay {
+  const { keyId, keySecret } = getRazorpayCredentials();
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
+
+function getRazorpayErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error !== 'object' || error === null || !('error' in error)) {
+    return 'Razorpay order creation failed';
+  }
+
+  const details = error.error;
+  if (typeof details !== 'object' || details === null) {
+    return 'Razorpay order creation failed';
+  }
+
+  const description =
+    'description' in details && typeof details.description === 'string'
+      ? details.description
+      : undefined;
+  const code =
+    'code' in details && typeof details.code === 'string' ? details.code : undefined;
+
+  if (description && code) return `Razorpay rejected the order (${code}): ${description}`;
+  return description || (code ? `Razorpay rejected the order (${code})` : 'Razorpay order creation failed');
+}
+
+function verifyHmac(secret: string, message: Buffer | string, signature: string): boolean {
+  if (!/^[a-f\d]{64}$/i.test(signature)) return false;
+  const expected = createHmac('sha256', secret).update(message).digest();
+  const received = Buffer.from(signature, 'hex');
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}
+
 // POST /api/payments/intent - Create payment intent
 router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(async (req, res) => {
   const { orderId, provider } = req.body;
+  if (provider === PaymentProvider.STRIPE) {
+    throw new ValidationError('Stripe payments are not currently supported');
+  }
   
   // Fetch order to get amount
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new NotFoundError('Order');
   if (Number(order.total) <= 0) throw new ValidationError('Invalid order amount');
 
-  const amountInPaise = Math.round(Number(order.total) * 100); // Convert to paise for Razorpay/Stripe
+  const amountInPaise = Math.round(Number(order.total) * 100); // Razorpay expects paise
   
   let response: any = { provider, orderId, amount: Number(order.total), currency: 'INR' };
   
   // Check if payment already exists for this order
   let payment = await prisma.payment.findUnique({ where: { orderId } });
+  if (payment?.status === PaymentStatus.SUCCESS) {
+    throw new ValidationError('Payment has already been completed');
+  }
   
   if (provider === PaymentProvider.RAZORPAY || provider === PaymentProvider.UPI) {
-    if (
-      !config.RAZORPAY_KEY_ID ||
-      !config.RAZORPAY_KEY_SECRET ||
-      config.RAZORPAY_KEY_ID.includes('your_key_id')
-    ) {
-      throw new ValidationError('Razorpay not configured');
+    const razorpay = getRazorpayClient();
+    let razorpayOrder;
+    try {
+      razorpayOrder = await razorpay.orders.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: orderId,
+        notes: { orderId },
+      });
+    } catch (error) {
+      logger.error({ err: error, orderId }, 'Razorpay order creation failed');
+      throw new ExternalServiceError('Razorpay', getRazorpayErrorMessage(error));
     }
-
-    const razorpay = new Razorpay({
-      key_id: config.RAZORPAY_KEY_ID,
-      key_secret: config.RAZORPAY_KEY_SECRET,
-    });
-    const razorpayOrder = await razorpay.orders.create({
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt: orderId,
-      notes: { orderId },
-    });
 
     response.razorpayOrderId = razorpayOrder.id;
     response.razorpayKeyId = config.RAZORPAY_KEY_ID;
-  } else if (provider === PaymentProvider.STRIPE) {
-    if (!config.STRIPE_SECRET_KEY) {
-      throw new ValidationError('Stripe not configured');
-    }
-    
-    // In production, use actual Stripe SDK
-    // const Stripe = require('stripe');
-    // const stripe = new Stripe(config.STRIPE_SECRET_KEY);
-    // const paymentIntent = await stripe.paymentIntents.create({ 
-    //   amount: amountInPaise, 
-    //   currency: 'inr', 
-    //   metadata: { orderId },
-    //   automatic_payment_methods: { enabled: true }
-    // });
-    // response.stripeClientSecret = paymentIntent.client_secret;
-    // response.stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-    
-    // Mock for development
-    response.stripeClientSecret = 'pi_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-  } else if (provider === PaymentProvider.UPI) {
-    // UPI payment via Razorpay or direct UPI intent
-    response.upiIntent = `upi://pay?pa=merchant@upi&pn=TRADENEST&am=${order.total}&cu=INR&tn=Order%20${orderId}&tr=${orderId}`;
   } else if (provider === PaymentProvider.WALLET) {
     // Wallet payment - check balance
     const userId = req.headers['x-user-id'] as string;
@@ -86,7 +131,7 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
   }
 
   // Create or update payment record
-  const providerRef = response.razorpayOrderId || response.stripeClientSecret || response.upiIntent || `wallet_${Date.now()}`;
+  const providerRef = response.razorpayOrderId || `wallet_${Date.now()}`;
   
   if (payment) {
     payment = await prisma.payment.update({
@@ -105,17 +150,32 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
 
 // POST /api/payments/verify - Verify payment after user completes it
 router.post('/verify', asyncHandler(async (req, res) => {
-  const { paymentId, provider, providerRef, razorpayPaymentId, razorpaySignature, stripePaymentIntentId } = req.body;
+  const parsedBody = verifyPaymentSchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw new ValidationError('Invalid request data', parsedBody.error.flatten().fieldErrors);
+  }
+  const { paymentId, provider, providerRef, razorpayPaymentId, razorpaySignature } = parsedBody.data;
+  if (provider === PaymentProvider.STRIPE) {
+    throw new ValidationError('Stripe payments are not currently supported');
+  }
   
   const payment = await prisma.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
   if (!payment) throw new NotFoundError('Payment');
+  if (payment.provider !== provider) {
+    throw new ValidationError('Payment provider does not match the payment record');
+  }
+  if (payment.status === PaymentStatus.SUCCESS) {
+    if (payment.providerRef !== providerRef) {
+      throw new ValidationError('Payment verification failed');
+    }
+    return res.json({ success: true, payment });
+  }
   
   let verified = false;
   let verifiedAmount = 0;
   
   if (provider === PaymentProvider.RAZORPAY || provider === PaymentProvider.UPI) {
     if (
-      !config.RAZORPAY_KEY_SECRET ||
       !razorpayPaymentId ||
       !razorpaySignature ||
       !providerRef ||
@@ -125,21 +185,26 @@ router.post('/verify', asyncHandler(async (req, res) => {
       throw new ValidationError('Payment verification failed');
     }
 
-    const expectedSignature = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
-      .update(`${providerRef}|${razorpayPaymentId}`)
-      .digest();
-    const receivedSignature = Buffer.from(razorpaySignature, 'hex');
-    verified = receivedSignature.length === expectedSignature.length &&
-      timingSafeEqual(receivedSignature, expectedSignature);
-    if (verified) verifiedAmount = Number(payment.amount);
-  } else if (provider === PaymentProvider.STRIPE) {
-    // In production, verify with Stripe
-    // const stripe = new Stripe(config.STRIPE_SECRET_KEY);
-    // const paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
-    // verified = paymentIntent.status === 'succeeded';
-    // if (verified) verifiedAmount = paymentIntent.amount / 100;
-    
-    // Mock verification for development
+    const { keyId, keySecret } = getRazorpayCredentials();
+    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    const signatureValid = verifyHmac(
+      keySecret,
+      `${providerRef}|${razorpayPaymentId}`,
+      razorpaySignature,
+    );
+    if (!signatureValid) throw new ValidationError('Payment verification failed');
+
+    const razorpayPayment = await razorpay.payments.fetch(razorpayPaymentId);
+    const expectedAmountInPaise = Math.round(Number(payment.amount) * 100);
+    if (
+      razorpayPayment.order_id !== providerRef ||
+      razorpayPayment.status !== 'captured' ||
+      razorpayPayment.amount !== expectedAmountInPaise ||
+      razorpayPayment.currency !== payment.currency
+    ) {
+      throw new ValidationError('Razorpay payment is not captured for the expected amount');
+    }
+
     verified = true;
     verifiedAmount = Number(payment.amount);
   } else if (provider === PaymentProvider.WALLET) {
@@ -192,9 +257,7 @@ router.post('/verify', asyncHandler(async (req, res) => {
     where: { id: paymentId },
     data: { 
       status: PaymentStatus.SUCCESS, 
-      providerRef: provider === PaymentProvider.STRIPE
-        ? stripePaymentIntentId || providerRef
-        : payment.providerRef,
+      providerRef: payment.providerRef,
       rawResponse: req.body,
     },
     include: { order: true },
@@ -206,69 +269,58 @@ router.post('/verify', asyncHandler(async (req, res) => {
 // POST /api/payments/webhook - Handle provider webhooks
 router.post('/webhook/:provider', asyncHandler(async (req, res) => {
   const { provider } = req.params;
-  
-  // In production, verify webhook signatures
-  // For Razorpay: verify x-razorpay-signature header
-  // For Stripe: verify stripe-signature header
-  
-  console.log(`Webhook received from ${provider}:`, req.body);
-  
-  // Process webhook based on provider
+
   if (provider === 'razorpay') {
-    const { event, payload } = req.body;
-    if (event === 'payment.captured') {
-      const { id: razorpayPaymentId, order_id: razorpayOrderId, amount } = payload.payment.entity;
-      
-      const payment = await prisma.payment.findFirst({ where: { providerRef: razorpayOrderId } });
+    const webhookSecret = config.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.get('x-razorpay-signature');
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!webhookSecret?.trim() || !signature || !rawBody || !verifyHmac(webhookSecret, rawBody, signature)) {
+      throw new ValidationError('Invalid Razorpay webhook signature');
+    }
+
+    const parsedEvent = razorpayWebhookSchema.safeParse(req.body);
+    if (!parsedEvent.success) {
+      throw new ValidationError('Invalid Razorpay webhook payload', parsedEvent.error.flatten().fieldErrors);
+    }
+    const { event, payload } = parsedEvent.data;
+    if (event === 'payment.captured' || event === 'payment.failed') {
+      const entity = payload?.payment?.entity;
+      if (!entity?.order_id) throw new ValidationError('Razorpay webhook is missing its order reference');
+
+      const payment = await prisma.payment.findFirst({
+        where: {
+          providerRef: entity.order_id,
+          provider: { in: [PaymentProvider.RAZORPAY, PaymentProvider.UPI] },
+        },
+      });
+
       if (payment && payment.status !== PaymentStatus.SUCCESS) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { 
-            status: PaymentStatus.SUCCESS, 
-            providerRef: razorpayPaymentId,
-            rawResponse: req.body,
-          },
-        });
-        
-        // Trigger order confirmation
-        // This would typically call the order service
-      }
-    } else if (event === 'payment.failed') {
-      const { id: razorpayPaymentId, order_id: razorpayOrderId } = payload.payment.entity;
-      
-      const payment = await prisma.payment.findFirst({ where: { providerRef: razorpayOrderId } });
-      if (payment) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: PaymentStatus.FAILED, rawResponse: req.body },
-        });
+        if (event === 'payment.captured') {
+          const expectedAmountInPaise = Math.round(Number(payment.amount) * 100);
+          if (entity.amount !== expectedAmountInPaise || entity.currency !== payment.currency) {
+            throw new ValidationError('Razorpay webhook amount does not match the payment');
+          }
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: PaymentStatus.SUCCESS,
+              rawResponse: {
+                razorpayPaymentId: entity.id,
+                razorpayWebhookVerified: true,
+                webhookEvent: event,
+              },
+            },
+          });
+        } else {
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { status: PaymentStatus.FAILED, rawResponse: req.body },
+          });
+        }
       }
     }
-  } else if (provider === 'stripe') {
-    const event = req.body;
-    if (event.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data.object;
-      const payment = await prisma.payment.findFirst({ where: { providerRef: paymentIntent.id } });
-      if (payment && payment.status !== PaymentStatus.SUCCESS) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { 
-            status: PaymentStatus.SUCCESS, 
-            providerRef: paymentIntent.id,
-            rawResponse: req.body,
-          },
-        });
-      }
-    } else if (event.type === 'payment_intent.payment_failed') {
-      const paymentIntent = event.data.object;
-      const payment = await prisma.payment.findFirst({ where: { providerRef: paymentIntent.id } });
-      if (payment) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: PaymentStatus.FAILED, rawResponse: req.body },
-        });
-      }
-    }
+  } else {
+    throw new ValidationError('Unsupported payment webhook provider');
   }
   
   res.json({ received: true });

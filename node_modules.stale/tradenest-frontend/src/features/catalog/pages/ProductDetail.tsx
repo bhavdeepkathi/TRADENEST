@@ -8,6 +8,7 @@ import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { useAddToCartMutation, useGetProductQuery } from '../../../app/api'
+import { getApiErrorMessage } from '../../../app/apiError'
 
 export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -27,6 +28,9 @@ export default function ProductDetail() {
 
   const isInWishlist = product ? wishlistIds.includes(product.id) : false
   const inCart = product ? cartItems.find((i) => i.productId === product.id) : undefined
+  const availableQuantity = product?.inventory
+    ? Math.max(0, product.inventory.quantity - product.inventory.reserved)
+    : 0
 
   const handleAddToCart = async () => {
     if (product) {
@@ -35,8 +39,8 @@ export default function ProductDetail() {
           await addToCart({ productId: product.id, quantity }).unwrap()
           dispatch(addItem({ productId: product.id, quantity }))
           toast.success('Added to cart')
-        } catch {
-          toast.error('Could not add this product to your cart. Please try again.')
+        } catch (error) {
+          toast.error(getApiErrorMessage(error, 'Could not add this product to your cart. Please try again.'))
         }
         return
       }
@@ -149,7 +153,7 @@ export default function ProductDetail() {
                 <span className="text-secondary-500">({product.reviewCount || 0} reviews)</span>
               </div>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                {product.inventory && product.inventory.quantity > 0 ? 'In Stock' : 'Out of Stock'}
+                {availableQuantity > 0 ? 'In Stock' : 'Out of Stock'}
               </span>
             </div>
 
@@ -198,10 +202,10 @@ export default function ProductDetail() {
                   onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-16 text-center border-x border-secondary-300 focus:outline-none dark:border-secondary-600"
                   min={1}
-                  max={product.inventory?.quantity || 99}
+                  max={availableQuantity || 99}
                 />
                 <button
-                  onClick={() => setQuantity((q) => Math.min(product.inventory?.quantity || 99, q + 1))}
+                  onClick={() => setQuantity((q) => Math.min(availableQuantity || 99, q + 1))}
                   className="p-3 hover:bg-secondary-100 dark:hover:bg-secondary-800"
                   aria-label="Increase quantity"
                 >
@@ -213,11 +217,11 @@ export default function ProductDetail() {
             <div className="mb-6 flex flex-wrap gap-4">
               <button
                 onClick={handleAddToCart}
-                disabled={!product.inventory || product.inventory.quantity === 0}
-                className="btn btn-primary flex-1 min-w-[200px] flex items-center justify-center gap-2"
+                disabled={availableQuantity === 0}
+                className="btn btn-primary flex-1 min-w-[200px] flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ShoppingCart className="h-5 w-5" />
-                {inCart ? 'Update Cart' : 'Add to Cart'}
+                {availableQuantity === 0 ? 'Out of Stock' : inCart ? 'Update Cart' : 'Add to Cart'}
               </button>
               <button
                 onClick={handleToggleWishlist}

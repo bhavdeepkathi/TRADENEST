@@ -6,6 +6,7 @@ import { toggle, clearWishlist } from '../wishlistSlice'
 import { addItem } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { useGetProductsQuery, useAddToCartMutation } from '../../../app/api'
+import { getApiErrorMessage } from '../../../app/apiError'
 
 export default function WishlistPage() {
   const dispatch = useAppDispatch()
@@ -80,8 +81,8 @@ export default function WishlistPage() {
       await addToCart({ productId, quantity: 1 }).unwrap()
       dispatch(addItem({ productId, quantity: 1 }))
       toast.success('Added to cart')
-    } catch {
-      toast.error('Could not add this product to your cart. Please try again.')
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not add this product to your cart. Please try again.'))
     }
   }
 
@@ -152,10 +153,13 @@ export default function WishlistPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleAddToCart(item.productId)}
-                    className="btn btn-primary flex-1 text-sm"
+                    disabled={!item.product.inventory || item.product.inventory.quantity <= item.product.inventory.reserved}
+                    className="btn btn-primary flex-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <ShoppingCart className="mr-1 h-4 w-4" />
-                    Add to Cart
+                    {item.product.inventory && item.product.inventory.quantity > item.product.inventory.reserved
+                      ? 'Add to Cart'
+                      : 'Out of Stock'}
                   </button>
                   <Link to={`/products/${item.product.slug}`} className="btn btn-outline flex-1 text-sm">
                     <Eye className="mr-1 h-4 w-4" />

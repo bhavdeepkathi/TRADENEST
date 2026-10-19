@@ -188,15 +188,20 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
     if (!order.payment || order.payment.status !== PaymentStatus.SUCCESS) {
       throw new ValidationError('Payment has not been verified');
     }
+    if (order.payment.provider === PaymentProvider.STRIPE) {
+      throw new ValidationError('Stripe payments are not currently supported');
+    }
+    const paymentResponse = order.payment.rawResponse;
+    const razorpayVerified =
+      paymentResponse !== null &&
+      typeof paymentResponse === 'object' &&
+      !Array.isArray(paymentResponse) &&
+      'razorpayPaymentId' in paymentResponse &&
+      (('razorpaySignature' in paymentResponse && typeof paymentResponse.razorpaySignature === 'string') ||
+        ('razorpayWebhookVerified' in paymentResponse && paymentResponse.razorpayWebhookVerified === true));
     if (
       (order.payment.provider === PaymentProvider.RAZORPAY || order.payment.provider === PaymentProvider.UPI) &&
-      (
-        !order.payment.rawResponse ||
-        typeof order.payment.rawResponse !== 'object' ||
-        Array.isArray(order.payment.rawResponse) ||
-        !('razorpayPaymentId' in order.payment.rawResponse) ||
-        !('razorpaySignature' in order.payment.rawResponse)
-      )
+      !razorpayVerified
     ) {
       throw new ValidationError('Payment has not been verified');
     }

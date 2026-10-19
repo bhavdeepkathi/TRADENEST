@@ -2,13 +2,13 @@ import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone } from 'lucide-react'
+import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone } from 'lucide-react'
 import { useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { clearCart } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery } from '../../../app/api'
 
 const checkoutSchema = z.object({
@@ -19,22 +19,40 @@ const checkoutSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2),
   postalCode: z.string().length(6, 'Enter valid 6-digit PIN'),
-  paymentMethod: z.enum(['RAZORPAY', 'STRIPE', 'UPI', 'WALLET']),
+  paymentMethod: z.enum(['RAZORPAY', 'UPI', 'WALLET']),
   saveAddress: z.boolean().optional(),
 })
 
 type CheckoutForm = z.infer<typeof checkoutSchema>
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'message' in data &&
+      typeof data.message === 'string'
+    ) {
+      return data.message
+    }
+  }
+
+  return fallback
+}
+
 const paymentMethods = [
-  { id: 'RAZORPAY', label: 'Razorpay', desc: 'Cards, Netbanking, UPI, Wallets', icon: CreditCard },
-  { id: 'STRIPE', label: 'Stripe', desc: 'International cards & wallets', icon: CreditCard },
-  { id: 'UPI', label: 'UPI via Razorpay', desc: 'Pay with UPI in secure checkout', icon: Smartphone },
+  { id: 'UPI', label: 'UPI', desc: 'Pay with UPI apps via Razorpay', icon: Smartphone },
+  { id: 'RAZORPAY', label: 'Cards & Netbanking', desc: 'Pay by card, netbanking or supported wallets', icon: CreditCard },
   { id: 'WALLET', label: 'TRADENEST Wallet', desc: 'Use your wallet balance', icon: Wallet },
 ]
 
 const statusConfig = {
   RAZORPAY: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  STRIPE: { color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
   UPI: { color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
   WALLET: { color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
 }
@@ -47,7 +65,6 @@ export default function Checkout() {
   const [step, setStep] = useState(1) // 1: address, 2: payment, 3: processing, 4: success
   const [processing, setProcessing] = useState(false)
   const [paymentData, setPaymentData] = useState<any>(null)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'RAZORPAY' | 'STRIPE' | 'UPI' | 'WALLET'>('RAZORPAY')
   const [error, setError] = useState<string | null>(null)
 
   const [createOrder] = useCreateOrderMutation()
@@ -62,17 +79,12 @@ export default function Checkout() {
   const shipping = subtotal > 499 ? 0 : 99
   const total = subtotal + shipping
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CheckoutForm>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: { paymentMethod: 'RAZORPAY' },
   })
 
   const watchedPaymentMethod = watch('paymentMethod')
-
-  const handlePaymentMethodChange = (method: 'RAZORPAY' | 'STRIPE' | 'UPI' | 'WALLET') => {
-    setSelectedPaymentMethod(method)
-    setValue('paymentMethod', method)
-  }
 
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -89,13 +101,13 @@ export default function Checkout() {
     })
   }
 
-  const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, razorpayKeyId: string, amount: number) => {
+  const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, razorpayKeyId: string, amount: number, paymentMethod: 'RAZORPAY' | 'UPI'): Promise<RazorpayPaymentResponse> => {
     const loaded = await loadRazorpayScript()
     if (!loaded) {
       throw new Error('Failed to load Razorpay SDK')
     }
 
-    return new Promise<any>((resolve, reject) => {
+    return new Promise<RazorpayPaymentResponse>((resolve, reject) => {
       const options = {
         key: razorpayKeyId,
         amount: amount * 100, // Razorpay expects amount in paise
@@ -103,7 +115,20 @@ export default function Checkout() {
         name: 'TRADENEST',
         description: 'Order Payment',
         order_id: razorpayOrderId,
-        handler: (response: any) => {
+        method: paymentMethod === 'UPI' ? { upi: true } : undefined,
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: 'Pay using UPI',
+                instruments: [{ method: 'upi' as const }],
+              },
+            },
+            sequence: ['block.upi'],
+            preferences: { show_default_blocks: true },
+          },
+        },
+        handler: (response: RazorpayPaymentResponse) => {
           resolve(response)
         },
         prefill: {
@@ -124,23 +149,11 @@ export default function Checkout() {
         },
       }
 
-      const rzp = new (window as any).Razorpay(options)
-      rzp.on('payment.failed', (response: any) => {
+      const rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', (response) => {
         reject(new Error(response.error?.description || 'Payment failed'))
       })
       rzp.open()
-    })
-  }
-
-  const handleStripePayment = async (clientSecret: string) => {
-    // In production, use @stripe/stripe-js
-    // For now, simulate Stripe payment
-    toast.success('Stripe payment initiated (simulated)')
-    // Simulate successful payment
-    return new Promise<{ paymentIntentId: string }>((resolve) => {
-      setTimeout(() => {
-        resolve({ paymentIntentId: 'pi_mock_' + Date.now() })
-      }, 2000)
     })
   }
 
@@ -194,47 +207,43 @@ export default function Checkout() {
       let verificationResult
 
       if (data.paymentMethod === 'RAZORPAY' || data.paymentMethod === 'UPI') {
+        if (
+          !paymentResult.razorpayOrderId ||
+          !paymentResult.razorpayKeyId ||
+          !Number.isFinite(paymentResult.amount) ||
+          paymentResult.amount <= 0
+        ) {
+          throw new Error('Razorpay could not create a checkout session. Please try again.')
+        }
+
         setStep(3)
         try {
           const razorpayResponse = await handleRazorpayPayment(
             orderId,
-            paymentResult.razorpayOrderId!,
-            paymentResult.razorpayKeyId!,
-            paymentResult.amount
+            paymentResult.razorpayOrderId,
+            paymentResult.razorpayKeyId,
+            paymentResult.amount,
+            data.paymentMethod
           )
           
           // Verify payment on backend
           verificationResult = await verifyPayment({
             paymentId: paymentResult.paymentId,
             provider: data.paymentMethod,
-            providerRef: paymentResult.razorpayOrderId!,
+            providerRef: paymentResult.razorpayOrderId,
             razorpayPaymentId: razorpayResponse.razorpay_payment_id,
             razorpaySignature: razorpayResponse.razorpay_signature,
           }).unwrap()
-        } catch (err: any) {
+        } catch (err: unknown) {
           // Payment cancelled or failed
-          throw new Error(err.message || 'Razorpay payment failed')
-        }
-      } else if (data.paymentMethod === 'STRIPE') {
-        setStep(3)
-        try {
-          const stripeResponse = await handleStripePayment(paymentResult.stripeClientSecret!)
-          
-          verificationResult = await verifyPayment({
-            paymentId: paymentResult.paymentId,
-            provider: 'STRIPE',
-            providerRef: paymentResult.stripeClientSecret!,
-            stripePaymentIntentId: stripeResponse.paymentIntentId,
-          }).unwrap()
-        } catch (err: any) {
-          throw new Error(err.message || 'Stripe payment failed')
+          throw new Error(getErrorMessage(err, 'Razorpay payment failed'))
         }
       } else if (data.paymentMethod === 'WALLET') {
         setStep(3)
         try {
           verificationResult = await handleWalletPayment(orderId, paymentResult.paymentId)
-        } catch (err: any) {
-          throw new Error(err.message || 'Wallet payment failed')
+        } catch (err: unknown) {
+          throw new Error(getErrorMessage(err, 'Wallet payment failed'))
         }
       }
 
@@ -243,7 +252,7 @@ export default function Checkout() {
         await confirmPayment({
           orderId,
           paymentId: paymentResult.paymentId,
-          providerRef: paymentResult.razorpayOrderId || paymentResult.stripeClientSecret || paymentResult.upiIntent || paymentResult.paymentId,
+          providerRef: paymentResult.razorpayOrderId || paymentResult.paymentId,
           provider: data.paymentMethod,
         }).unwrap()
         await dispatch(clearCart())
@@ -257,9 +266,10 @@ export default function Checkout() {
       } else {
         throw new Error('Payment verification failed')
       }
-    } catch (err: any) {
-      setError(err.message || 'Payment failed. Please try again.')
-      toast.error(err.message || 'Payment failed')
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Payment failed. Please try again.')
+      setError(message)
+      toast.error(message)
       setStep(2) // Go back to payment step
     } finally {
       setProcessing(false)
@@ -267,11 +277,16 @@ export default function Checkout() {
   }
 
   if (cartLoading) {
-    return <div className="px-4 py-16 text-center text-secondary-600">Loading your cart...</div>
+    return <div className="px-4 py-16 text-center text-secondary-600 dark:text-secondary-400">Loading your cart...</div>
   }
 
   if (cartError || items.length === 0) {
-    return <div className="px-4 py-16 text-center text-secondary-600">Your cart is empty. Add products before checkout.</div>
+    return (
+      <div className="px-4 py-16 text-center">
+        <p className="text-secondary-600 dark:text-secondary-400">Your cart is empty. Add products before checkout.</p>
+        <Link to="/products" className="btn btn-primary mt-5">Continue shopping</Link>
+      </div>
+    )
   }
 
   // Step 4: Success
@@ -322,31 +337,40 @@ export default function Checkout() {
   }
 
   return (
-    <div className="px-4 py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex items-center gap-4">
-          <motion.h1
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-3xl font-bold text-secondary-900 dark:text-secondary-50"
-          >
-            Checkout
-          </motion.h1>
-          <div className="flex items-center gap-2">
+    <div className="px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <motion.h1
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-3xl font-bold text-secondary-900 dark:text-secondary-50"
+            >
+              Checkout
+            </motion.h1>
+            <Link to="/cart" className="mt-2 inline-flex items-center text-sm font-medium text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
+              <ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+              Return to cart
+            </Link>
+          </div>
+          <div className="flex items-center gap-3" aria-label="Checkout progress">
             {[1, 2].map((s) => (
               <motion.div
                 key={s}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.1 * s }}
-                className={clsx('flex items-center gap-2', s < 2 && 'after:content-[""] after:w-8 after:h-0.5 after:bg-secondary-300')}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 * s, duration: 0.2 }}
+                className="flex items-center gap-3"
               >
-                <div className={clsx('flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium', step >= s ? 'bg-primary-600 text-white' : 'bg-secondary-200 text-secondary-500 dark:bg-secondary-700')}>
-                  {s}
+                <div className="flex items-center gap-2">
+                  <span className={clsx('flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors', step >= s ? 'bg-primary-600 text-white' : 'bg-secondary-200 text-secondary-500 dark:bg-secondary-700 dark:text-secondary-300')}>
+                    {step > s ? <Check className="h-4 w-4" /> : s}
+                  </span>
+                  <span className={clsx('text-xs font-medium sm:text-sm', step >= s ? 'text-primary-700 dark:text-primary-400' : 'text-secondary-500')}>
+                    {s === 1 ? 'Shipping' : 'Payment'}
+                  </span>
                 </div>
-                <span className={clsx('hidden text-sm font-medium', step >= s ? 'text-primary-600' : 'text-secondary-500', s === 1 ? 'md:block' : 'md:block')}>
-                  {s === 1 ? 'Shipping' : 'Payment'}
-                </span>
+                {s === 1 && <span className="h-px w-6 bg-secondary-300 dark:bg-secondary-600 sm:w-10" aria-hidden="true" />}
               </motion.div>
             ))}
           </div>
@@ -356,7 +380,8 @@ export default function Checkout() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 rounded-lg bg-red-50 p-4 border border-red-200 dark:bg-red-900/20 dark:border-red-800"
+            role="alert"
+            className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20"
           >
             <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
               <AlertCircle className="h-5 w-5" />
@@ -365,14 +390,14 @@ export default function Checkout() {
           </motion.div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:gap-8">
+          <div className="min-w-0 space-y-6">
             <motion.section
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="card p-6"
+              className="card p-5 sm:p-6"
             >
-              <h2 className="mb-6 text-lg font-semibold text-secondary-900 dark:text-secondary-50 flex items-center gap-2">
+              <h2 className="mb-5 flex items-center gap-2 text-lg font-semibold text-secondary-900 dark:text-secondary-50 sm:mb-6">
                 <Truck className="h-5 w-5 text-primary-600" />
                 Shipping Address
               </h2>
@@ -424,9 +449,9 @@ export default function Checkout() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="card p-6"
+              className="card p-5 sm:p-6"
             >
-              <h2 className="mb-6 text-lg font-semibold text-secondary-900 dark:text-secondary-50 flex items-center gap-2">
+              <h2 className="mb-5 flex items-center gap-2 text-lg font-semibold text-secondary-900 dark:text-secondary-50 sm:mb-6">
                 <CreditCard className="h-5 w-5 text-primary-600" />
                 Payment Method
               </h2>
@@ -441,9 +466,9 @@ export default function Checkout() {
                     <label
                       key={method.id}
                       className={clsx(
-                        'relative flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all',
+                        'group relative flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-colors focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-secondary-900',
                         watchedPaymentMethod === method.id
-                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                          ? 'border-primary-500 bg-primary-50 shadow-sm dark:bg-primary-900/20'
                           : 'border-secondary-200 hover:border-primary-300 dark:border-secondary-700',
                         insufficientFunds && 'opacity-50 cursor-not-allowed'
                       )}
@@ -452,15 +477,15 @@ export default function Checkout() {
                         {...register('paymentMethod')}
                         type="radio"
                         value={method.id}
-                        className="sr-only"
+                        className="h-5 w-5 shrink-0 accent-primary-600"
                         disabled={insufficientFunds}
                       />
-                      <div className={clsx('flex h-10 w-10 items-center justify-center rounded-lg', statusConfig[method.id as keyof typeof statusConfig].color)}>
+                      <div className={clsx('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', statusConfig[method.id as keyof typeof statusConfig].color)}>
                         <method.icon className="h-5 w-5" />
                       </div>
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-secondary-900 dark:text-secondary-50">{method.label}</p>
-                        <p className="text-sm text-secondary-500">{method.desc}</p>
+                        <p className="text-sm text-secondary-500 dark:text-secondary-400">{method.desc}</p>
                         {isWallet && (
                           <div className="mt-2 flex items-center gap-2 text-sm">
                             <span className="text-secondary-600 dark:text-secondary-400">Balance:</span>
@@ -471,9 +496,6 @@ export default function Checkout() {
                           </div>
                         )}
                       </div>
-                      {watchedPaymentMethod === method.id && (
-                        <div className="absolute inset-0 rounded-lg ring-2 ring-primary-500/50" />
-                      )}
                     </label>
                   )
                 })}
@@ -490,25 +512,25 @@ export default function Checkout() {
             </motion.section>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <motion.aside
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="sticky top-24 card p-6"
+              className="card p-5 sm:p-6 lg:sticky lg:top-24"
             >
               <h2 className="mb-4 text-lg font-semibold text-secondary-900 dark:text-secondary-50">Order Summary</h2>
 
-              <div className="mb-4 max-h-60 overflow-y-auto">
+              <div className="mb-4 max-h-60 space-y-4 overflow-y-auto pr-1">
                 {items.map((item) => (
-                  <div key={item.productId} className="flex gap-3">
+                  <div key={item.productId} className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-3">
                     <img
-  src={item.product.images?.[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop'}
-  alt=""
-  className="h-16 w-16 rounded-lg object-cover"
-/>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-secondary-900 dark:text-secondary-50 truncate">{item.product.title}</p>
+                      src={item.product.images?.[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop'}
+                      alt=""
+                      className="h-12 w-12 rounded-lg object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-secondary-900 dark:text-secondary-50">{item.product.title}</p>
                       <p className="text-sm text-secondary-500">Qty: {item.quantity}</p>
                       <p className="font-medium text-secondary-900 dark:text-secondary-50">₹{(item.product.price * item.quantity).toLocaleString()}</p>
                     </div>
@@ -543,7 +565,11 @@ export default function Checkout() {
 
               <div className="mt-4 flex items-center justify-center gap-2 text-xs text-secondary-500">
                 <Shield className="h-4 w-4" />
-                <span>Secured by Razorpay & Stripe</span>
+                <span>
+                  {watchedPaymentMethod === 'WALLET'
+                    ? 'Paid securely with TRADENEST Wallet'
+                    : 'Secured by Razorpay Checkout'}
+                </span>
               </div>
             </motion.aside>
           </div>

@@ -55,6 +55,13 @@ const serviceRoutes: ServiceRoute[] = [
     authRequired: true,
   },
   {
+    path: '/api/payments/webhook/razorpay',
+    target: gatewayConfig.PAYMENT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { '^/payments': '/api/payments' },
+    authRequired: false,
+  },
+  {
     path: '/api/payments',
     target: gatewayConfig.PAYMENT_SERVICE_URL,
     changeOrigin: true,

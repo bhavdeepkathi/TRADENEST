@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { useGetProductsQuery, useGetCategoriesQuery, useAddToCartMutation } from '../../../app/api'
+import { getApiErrorMessage } from '../../../app/apiError'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
@@ -54,8 +55,8 @@ export default function ProductList() {
       await addToCart({ productId, quantity: 1 }).unwrap()
       dispatch(addItem({ productId, quantity: 1 }))
       toast.success('Added to cart')
-    } catch {
-      toast.error('Could not add this product to your cart. Please try again.')
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not add this product to your cart. Please try again.'))
     }
   }
 
@@ -222,7 +223,12 @@ export default function ProductList() {
             view === 'grid' ? 'grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col'
           )}
         >
-          {products.map((product, i) => (
+          {products.map((product, i) => {
+            const availableQuantity = product.inventory
+              ? Math.max(0, product.inventory.quantity - product.inventory.reserved)
+              : 0
+
+            return (
             <motion.article
               key={product.id}
               initial={{ opacity: 0, y: 20 }}
@@ -273,15 +279,16 @@ export default function ProductList() {
                 <button
                   type="button"
                   onClick={() => void handleAddToCart(product.id)}
-                  disabled={!product.inventory || product.inventory.quantity < 1}
-                  className="btn btn-primary mt-4 flex w-full items-center justify-center gap-2 text-sm"
+                  disabled={availableQuantity === 0}
+                  className="btn btn-primary mt-4 flex w-full items-center justify-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  Add to Cart
+                  {availableQuantity > 0 ? 'Add to Cart' : 'Out of Stock'}
                 </button>
               </div>
             </motion.article>
-          ))}
+            )
+          })}
         </div>
 
         {products.length === 0 && (

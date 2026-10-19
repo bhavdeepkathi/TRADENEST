@@ -140,25 +140,32 @@ export default function CartPage() {
   }
 
   return (
-    <div className="px-4 py-8">
+    <div className="px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8 text-3xl font-bold text-secondary-900 dark:text-secondary-50"
-        >
-          Shopping Cart ({displayItems.length})
-        </motion.h1>
+        <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <motion.h1
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-3xl font-bold text-secondary-900 dark:text-secondary-50"
+            >
+              Shopping Cart
+            </motion.h1>
+            <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-400">
+              {displayItems.length} {displayItems.length === 1 ? 'item' : 'items'} in your cart
+            </p>
+          </div>
+        </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <div className="rounded-xl border border-secondary-200 dark:border-secondary-700 overflow-hidden">
-              <div className="hidden px-4 py-3 bg-secondary-50 dark:bg-secondary-800/50 sm:grid grid-cols-[1fr_120px_100px_120px_60px] gap-4 text-sm font-medium text-secondary-600 dark:text-secondary-400">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:gap-8">
+          <div className="min-w-0">
+            <div className="overflow-hidden rounded-2xl border border-secondary-200 bg-white shadow-sm dark:border-secondary-700 dark:bg-secondary-800">
+              <div className="hidden bg-secondary-50 px-5 py-3 text-sm font-medium text-secondary-600 dark:bg-secondary-800/50 dark:text-secondary-400 sm:grid sm:grid-cols-[minmax(0,1fr)_90px_112px_100px_40px] sm:gap-4 md:grid-cols-[minmax(0,1fr)_100px_112px_110px_40px]">
                 <span>Product</span>
-                <span>Price</span>
-                <span>Quantity</span>
-                <span>Total</span>
-                <span></span>
+                <span className="text-right">Price</span>
+                <span className="text-center">Quantity</span>
+                <span className="text-right">Total</span>
+                <span aria-hidden="true"></span>
               </div>
 
               <div className="divide-y divide-secondary-200 dark:divide-secondary-700">
@@ -167,52 +174,56 @@ export default function CartPage() {
                     key={item.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.05 * i }}
-                    className="flex gap-4 p-4 sm:grid sm:grid-cols-[1fr_120px_100px_120px_60px] sm:items-center"
+                    transition={{ delay: Math.min(0.03 * i, 0.18), duration: 0.2 }}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-4 sm:grid-cols-[minmax(0,1fr)_90px_112px_100px_40px] sm:gap-4 sm:px-5 md:grid-cols-[minmax(0,1fr)_100px_112px_110px_40px]"
                   >
-                    <Link to={`/products/${item.product.slug}`} className="flex gap-4 min-w-0">
-                      <img src={item.product.images[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop'} alt={item.product.title} className="h-20 w-20 rounded-lg object-cover flex-shrink-0" />
+                    <Link to={`/products/${item.product.slug}`} className="col-span-2 flex min-w-0 items-center gap-4 sm:col-span-1">
+                      <img src={item.product.images[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop'} alt={item.product.title} className="h-16 w-16 flex-shrink-0 rounded-xl object-cover sm:h-20 sm:w-20" />
                       <div className="min-w-0">
-                        <h3 className="font-medium text-secondary-900 dark:text-secondary-50 truncate">{item.product.title}</h3>
+                        <h3 className="truncate font-medium text-secondary-900 dark:text-secondary-50">{item.product.title}</h3>
                         <p className="text-sm text-secondary-500">Seller: {item.product.seller?.storeName || 'TRADENEST'}</p>
+                        <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-secondary-50 sm:hidden">
+                          ₹{item.subtotal.toLocaleString()}
+                          <span className="ml-1 font-normal text-secondary-500">· {item.quantity} {item.quantity === 1 ? 'item' : 'items'}</span>
+                        </p>
                       </div>
                     </Link>
 
-                    <div className="hidden sm:block text-right">
+                    <div className="hidden text-right sm:block">
                       <p className="font-medium text-secondary-900 dark:text-secondary-50">₹{item.product.price.toLocaleString()}</p>
                       {item.product.mrp && item.product.mrp > item.product.price && (
                         <p className="text-sm line-through text-secondary-400">₹{item.product.mrp.toLocaleString()}</p>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-center gap-2 border border-secondary-300 rounded-lg w-full max-w-xs sm:max-w-none">
+                    <div className="flex w-fit items-center justify-center rounded-lg border border-secondary-300 dark:border-secondary-600">
                       <button
                         onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
-                        className="p-2 hover:bg-secondary-100 dark:hover:bg-secondary-800"
+                        className="flex h-10 w-10 items-center justify-center rounded-l-lg text-secondary-600 transition-colors hover:bg-secondary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:text-secondary-300 dark:hover:bg-secondary-700"
                         aria-label="Decrease quantity"
                       >
-                        <Minus className="h-5 w-5" />
+                        <Minus className="h-4 w-4" />
                       </button>
-                      <span className="w-10 text-center font-medium">{item.quantity}</span>
+                      <span className="min-w-8 text-center text-sm font-medium text-secondary-900 dark:text-secondary-50">{item.quantity}</span>
                       <button
                         onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
-                        className="p-2 hover:bg-secondary-100 dark:hover:bg-secondary-800"
+                        className="flex h-10 w-10 items-center justify-center rounded-r-lg text-secondary-600 transition-colors hover:bg-secondary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:text-secondary-300 dark:hover:bg-secondary-700"
                         aria-label="Increase quantity"
                       >
-                        <Plus className="h-5 w-5" />
+                        <Plus className="h-4 w-4" />
                       </button>
                     </div>
 
-                    <div className="hidden sm:block text-right font-medium text-secondary-900 dark:text-secondary-50">
+                    <div className="hidden text-right font-medium text-secondary-900 dark:text-secondary-50 sm:block">
                       ₹{item.subtotal.toLocaleString()}
                     </div>
 
                     <button
                       onClick={() => handleRemoveItem(item.productId)}
-                      className="flex items-center justify-center p-2 text-secondary-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                      aria-label="Remove item"
+                      className="flex h-10 w-10 items-center justify-center justify-self-end rounded-lg text-secondary-400 transition-colors hover:bg-red-50 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:hover:bg-red-900/20 sm:justify-self-center"
+                      aria-label={`Remove ${item.product.title} from cart`}
                     >
-                      <Trash2 className="h-5 w-5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </motion.div>
                 ))}
@@ -226,8 +237,8 @@ export default function CartPage() {
             </div>
           </div>
 
-          <div>
-            <div className="sticky top-24 card p-6">
+          <div className="min-w-0">
+            <div className="card p-5 sm:p-6 lg:sticky lg:top-24">
               <h2 className="mb-4 text-lg font-semibold text-secondary-900 dark:text-secondary-50">Order Summary</h2>
 
               <div className="space-y-3 mb-4">
@@ -246,7 +257,12 @@ export default function CartPage() {
                   </span>
                 </div>
                 {shipping > 0 && (
-                  <p className="text-xs text-primary-600">Add ₹{499 - subtotal} more for free delivery!</p>
+                  <div>
+                    <p className="text-xs text-primary-600">Add ₹{499 - subtotal} more for free delivery!</p>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary-100 dark:bg-secondary-700" role="progressbar" aria-label="Progress towards free delivery" aria-valuemin={0} aria-valuemax={499} aria-valuenow={Math.min(subtotal, 499)}>
+                      <div className="h-full rounded-full bg-primary-600 transition-[width] duration-300" style={{ width: `${Math.min((subtotal / 499) * 100, 100)}%` }} />
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -275,7 +291,7 @@ export default function CartPage() {
               </Link>
 
               <p className="mt-4 text-center text-xs text-secondary-500">
-                Secure checkout powered by Razorpay & Stripe
+                Secure checkout powered by Razorpay
               </p>
             </div>
           </div>
