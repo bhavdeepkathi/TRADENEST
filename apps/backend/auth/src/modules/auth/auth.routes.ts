@@ -24,7 +24,9 @@ function validate(schema: z.ZodSchema) {
 // Public routes
 router.post('/register', validate(RegisterDtoSchema), asyncHandler(controller.register));
 router.post('/verify-otp', validate(VerifyOtpDtoSchema), asyncHandler(controller.verifyOtp));
+router.post('/resend-otp', asyncHandler(controller.resendOtp));
 router.post('/login', validate(LoginDtoSchema), asyncHandler(controller.login));
+router.post('/google', asyncHandler(controller.googleLogin));
 router.post('/refresh', validate(RefreshTokenSchema), asyncHandler(controller.refresh));
 router.post('/forgot-password', validate(ForgotPasswordDtoSchema), asyncHandler(controller.forgotPassword));
 router.post('/reset-password', validate(ResetPasswordDtoSchema), asyncHandler(controller.resetPassword));

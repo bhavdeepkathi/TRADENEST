@@ -36,3 +36,9 @@ export function GuestRoute() {
 
   return isAuthenticated ? <Navigate to="/" replace /> : <Outlet />
 }
+
+export function AdminRoute() {
+  const { user } = useAppSelector((state) => state.auth)
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  return isAdmin ? <Outlet /> : <Navigate to="/" replace />
+}

@@ -13,7 +13,7 @@ export const api = createApi({
       return headers
     },
   }),
-  tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment'],
+  tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment', 'Address', 'Notification', 'Coupon'],
   endpoints: (builder) => ({
     login: builder.mutation<{
       accessToken: string
@@ -23,8 +23,32 @@ export const api = createApi({
     }),
     register: builder.mutation<{
       message: string
+      devOtp?: string
     }, { email: string; password: string; firstName: string; lastName: string; phone?: string; role?: string }>({
       query: (body) => ({ url: '/auth/register', method: 'POST', body }),
+    }),
+    googleLogin: builder.mutation<{
+      accessToken: string
+      refreshToken: string
+      user: {
+        id: string
+        email: string
+        firstName: string
+        lastName: string
+        phone: string | null
+        avatarUrl: string | null
+        role: string
+        isVerified: boolean
+      }
+    }, { credential: string; role?: string }>({
+      query: (body) => ({ url: '/auth/google', method: 'POST', body }),
+    }),
+    resendOtp: builder.mutation<{
+      message: string
+      devOtp?: string
+      sentViaSmtp?: boolean
+    }, { email: string }>({
+      query: (body) => ({ url: '/auth/resend-otp', method: 'POST', body }),
     }),
     verifyOtp: builder.mutation<{
       accessToken: string
@@ -83,7 +107,7 @@ export const api = createApi({
         inventory: { quantity: number; reserved: number } | null
       }>
       meta: { page: number; limit: number; total: number; totalPages: number }
-    }, { page?: number; limit?: number; q?: string; categoryId?: string; brand?: string; subcategory?: string; minPrice?: number; maxPrice?: number; rating?: number; minDiscount?: number; inStock?: boolean; sort?: string; order?: string }>({
+    }, { page?: number; limit?: number; q?: string; categoryId?: string; brand?: string; subcategory?: string; minPrice?: number; maxPrice?: number; rating?: number; minDiscount?: number; inStock?: boolean; status?: string; sort?: string; order?: string }>({
       query: (params) => ({
         url: '/products',
         params,
@@ -301,6 +325,15 @@ export const api = createApi({
           providerRef: string
         } | null
         invoice: { id: string; number: string; pdfUrl: string } | null
+        returns?: Array<{
+          id: string
+          orderId: string
+          sellerId: string
+          userId: string
+          reason: string
+          status: string
+          createdAt: string
+        }>
         createdAt: string
         updatedAt: string
       }>
@@ -340,11 +373,123 @@ export const api = createApi({
         createdAt: string
       } | null
       invoice: { id: string; number: string; pdfUrl: string } | null
+      returns?: Array<{
+        id: string
+        orderId: string
+        sellerId: string
+        userId: string
+        reason: string
+        status: string
+        createdAt: string
+      }>
       createdAt: string
       updatedAt: string
     }, string>({
       query: (id) => `/orders/${id}`,
       providesTags: (result, error, id) => [{ type: 'Order', id }],
+    }),
+    // Seller Orders - Get order items for a specific seller
+    getSellerOrderItems: builder.query<{
+      data: Array<{
+        id: string
+        orderId: string
+        productId: string
+        sellerId: string
+        title: string
+        price: number
+        quantity: number
+        discount: number
+        subtotal: number
+        product: {
+          id: string
+          title: string
+          slug?: string
+          brand?: string
+          subcategory?: string
+          description?: string
+          images: string[]
+          price: number
+          mrp?: number | null
+          status?: string
+          ratingAvg?: number | null
+          reviewCount?: number
+        }
+        order: {
+          id: string
+          userId: string
+          status: string
+          total: number
+          subtotal: number
+          shipping: number
+          discount: number
+          couponCode: string | null
+          shippingAddress: Record<string, any>
+          billingAddress: Record<string, any>
+          payment: { id: string; provider: string; status: string; amount: number; providerRef: string } | null
+          createdAt: string
+          updatedAt: string
+        }
+        createdAt: string
+      }>
+      meta: { page: number; limit: number; total: number; totalPages: number }
+    }, { sellerId: string; page?: number; limit?: number; status?: string }>({
+      query: ({ sellerId, ...params }) => ({ url: `/orders/seller/${sellerId}`, params }),
+      providesTags: ['Order'],
+    }),
+    // Seller Orders - Get distinct orders for a seller (grouped by order)
+    getSellerOrders: builder.query<{
+      data: Array<{
+        id: string
+        userId: string
+        status: string
+        total: number
+        subtotal: number
+        shipping: number
+        discount: number
+        couponCode: string | null
+        shippingAddress: Record<string, any>
+        billingAddress: Record<string, any>
+        payment: { id: string; provider: string; status: string; amount: number; providerRef: string } | null
+        items: Array<{
+          id: string
+          productId: string
+          sellerId: string
+          title: string
+          price: number
+          quantity: number
+          discount: number
+          subtotal: number
+          product: {
+            id: string
+            title: string
+            slug?: string
+            brand?: string
+            subcategory?: string
+            description?: string
+            images: string[]
+            price: number
+            mrp?: number | null
+            status?: string
+            ratingAvg?: number | null
+            reviewCount?: number
+          }
+        }>
+        returns?: Array<{
+          id: string
+          orderId: string
+          sellerId: string
+          userId: string
+          reason: string
+          status: string
+          createdAt: string
+        }>
+        createdAt: string
+        updatedAt: string
+      }>
+      meta: { page: number; limit: number; total: number; totalPages: number }
+    }, { sellerId: string; page?: number; limit?: number; status?: string }>({
+      query: ({ sellerId, ...params }) => ({ url: `/orders/seller/${sellerId}/orders`, params }),
+      providesTags: ['Order'],
     }),
     createOrder: builder.mutation<{
       id: string
@@ -400,6 +545,17 @@ export const api = createApi({
       query: ({ orderId, ...body }) => ({ url: `/orders/${orderId}/confirm-payment`, method: 'POST', body }),
       invalidatesTags: ['Order'],
     }),
+    updateOrderStatus: builder.mutation<{
+      id: string
+      status: string
+    }, { orderId: string; status: string }>({
+      query: ({ orderId, status }) => ({
+        url: `/orders/${orderId}/status`,
+        method: 'PATCH',
+        body: { status },
+      }),
+      invalidatesTags: ['Order'],
+    }),
     
     // Payments
     createPaymentIntent: builder.mutation<{
@@ -445,12 +601,318 @@ export const api = createApi({
       query: (body) => ({ url: '/wallet/add', method: 'POST', body }),
       invalidatesTags: ['Payment'],
     }),
+
+    // Product Reviews
+    getProductReviews: builder.query<{
+      data: Array<{
+        id: string
+        productId: string
+        userId: string
+        rating: number
+        title: string | null
+        body: string | null
+        isVerifiedPurchase: boolean
+        createdAt: string
+      }>
+    }, string>({
+      query: (productId) => `/products/${productId}/reviews`,
+      providesTags: (result, error, id) => [{ type: 'Product', id }],
+    }),
+    createProductReview: builder.mutation<{
+      id: string
+      productId: string
+      userId: string
+      rating: number
+      title: string | null
+      body: string | null
+      isVerifiedPurchase: boolean
+    }, { productId: string; rating: number; title?: string; body?: string }>({
+      query: ({ productId, ...body }) => ({
+        url: `/products/${productId}/reviews`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (result, error, { productId }) => [{ type: 'Product', id: productId }, 'Order'],
+    }),
+
+    // Order Return Request
+    createReturnRequest: builder.mutation<{
+      id: string
+      orderId: string
+      userId: string
+      sellerId: string
+      reason: string
+      status: string
+      createdAt: string
+    }, { orderId: string; reason: string }>({
+      query: ({ orderId, ...body }) => ({
+        url: `/orders/${orderId}/return`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (result, error, { orderId }) => [{ type: 'Order', id: orderId }, 'Order'],
+    }),
+    processReturnRequest: builder.mutation<{
+      message: string
+      returnRequest: any
+    }, { orderId: string; status: 'APPROVED' | 'REJECTED'; rejectionReason?: string }>({
+      query: ({ orderId, ...body }) => ({
+        url: `/orders/${orderId}/return/process`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Order'],
+    }),
+
+    // Seller Analytics
+    getSellerAnalytics: builder.query<{
+      period: string
+      totalProducts: number
+      totalOrders: number
+      totalRevenue: number
+      avgOrderValue: number
+      statusCounts: Record<string, number>
+      topProducts: Array<{ id: string; title: string; price: number; sales: number; revenue: number }>
+      timeSeries: Array<{ date: string; revenue: number; orders: number }>
+    }, { period?: string } | void>({
+      query: (params) => ({
+        url: '/orders/seller/me/analytics',
+        params: params || undefined,
+      }),
+      providesTags: ['Order', 'Product'],
+    }),
+
+    // Addresses
+    getAddresses: builder.query<Array<{
+      id: string
+      userId: string
+      label: string
+      line1: string
+      line2?: string | null
+      city: string
+      state: string
+      postalCode: string
+      country: string
+      isDefault: boolean
+    }>, void>({
+      query: () => '/users/addresses',
+      providesTags: ['Address'],
+    }),
+    createAddress: builder.mutation<any, {
+      label: string
+      line1: string
+      line2?: string
+      city: string
+      state: string
+      postalCode: string
+      country?: string
+      isDefault?: boolean
+    }>({
+      query: (body) => ({ url: '/users/addresses', method: 'POST', body }),
+      invalidatesTags: ['Address'],
+    }),
+    updateAddress: builder.mutation<any, {
+      id: string
+      body: {
+        label?: string
+        line1?: string
+        line2?: string
+        city?: string
+        state?: string
+        postalCode?: string
+        country?: string
+        isDefault?: boolean
+      }
+    }>({
+      query: ({ id, body }) => ({ url: `/users/addresses/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['Address'],
+    }),
+    deleteAddress: builder.mutation<{ message: string }, string>({
+      query: (id) => ({ url: `/users/addresses/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Address'],
+    }),
+
+    // Password Management
+    changePassword: builder.mutation<{ message: string }, { currentPassword: string; newPassword: string }>({
+      query: (body) => ({ url: '/users/change-password', method: 'POST', body }),
+      invalidatesTags: ['User'],
+    }),
+
+    // Coupons
+    validateCoupon: builder.mutation<{
+      valid: boolean
+      code: string
+      description: string
+      type: string
+      value: number
+      discount: number
+    }, { code: string; subtotal: number }>({
+      query: (body) => ({ url: '/orders/coupons/validate', method: 'POST', body }),
+    }),
+    getCoupons: builder.query<Array<{
+      id: string
+      code: string
+      description: string
+      type: string
+      value: number
+      minOrder?: number | null
+      maxDiscount?: number | null
+      startAt: string
+      endAt: string
+      isActive: boolean
+    }>, void>({
+      query: () => '/orders/coupons',
+      providesTags: ['Coupon'],
+    }),
+    createCoupon: builder.mutation<any, {
+      code: string
+      description: string
+      type: 'PERCENT' | 'FLAT'
+      value: number
+      minOrder?: number
+      maxDiscount?: number
+      startAt?: string
+      endAt?: string
+      usageLimit?: number
+    }>({
+      query: (body) => ({ url: '/orders/coupons', method: 'POST', body }),
+      invalidatesTags: ['Coupon'],
+    }),
+
+    // Notifications
+    getNotifications: builder.query<{
+      data: Array<{
+        id: string
+        userId: string
+        type: string
+        title: string
+        body: string
+        data?: any
+        read: boolean
+        createdAt: string
+      }>
+      meta: { page: number; limit: number; total: number; totalPages: number }
+    }, { page?: number; limit?: number } | void>({
+      query: (params) => ({
+        url: '/notifications',
+        params: params || undefined,
+      }),
+      providesTags: ['Notification'],
+    }),
+    getUnreadNotificationCount: builder.query<{ count: number }, void>({
+      query: () => '/notifications/unread-count',
+      providesTags: ['Notification'],
+    }),
+    markNotificationRead: builder.mutation<any, string>({
+      query: (id) => ({ url: `/notifications/${id}/read`, method: 'PATCH' }),
+      invalidatesTags: ['Notification'],
+    }),
+    markAllNotificationsRead: builder.mutation<{ success: boolean }, void>({
+      query: () => ({ url: '/notifications/read-all', method: 'PATCH' }),
+      invalidatesTags: ['Notification'],
+    }),
+
+    // Admin Endpoints
+    getAdminStats: builder.query<{
+      totalUsers: number
+      totalCustomers: number
+      totalSellers: number
+      pendingKycCount: number
+      pendingProductsCount: number
+      totalRevenue: number
+      totalOrders: number
+    }, void>({
+      query: () => '/users/admin/stats',
+      providesTags: ['User', 'Order', 'Product'],
+    }),
+    getAdminSellers: builder.query<{
+      data: Array<{
+        id: string
+        userId: string
+        storeName: string
+        gstin?: string | null
+        kycStatus: string
+        kycRejectionReason?: string | null
+        totalRevenue: number
+        totalOrders: number
+        createdAt: string
+        user: {
+          id: string
+          email: string
+          firstName: string
+          lastName: string
+          phone?: string | null
+          avatarUrl?: string | null
+          isActive: boolean
+        }
+        _count: { products: number }
+      }>
+    }, { kycStatus?: string } | void>({
+      query: (params) => ({
+        url: '/users/admin/sellers',
+        params: params || undefined,
+      }),
+      providesTags: ['User'],
+    }),
+    updateSellerKyc: builder.mutation<any, { sellerId: string; status: 'APPROVED' | 'REJECTED' | 'PENDING'; rejectionReason?: string }>({
+      query: ({ sellerId, ...body }) => ({
+        url: `/users/admin/sellers/${sellerId}/kyc`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
+    getAllUsers: builder.query<{
+      data: Array<{
+        id: string
+        email: string
+        firstName: string
+        lastName: string
+        phone?: string | null
+        role: string
+        isActive: boolean
+        isVerified: boolean
+        createdAt: string
+      }>
+      meta: { page: number; limit: number; total: number; totalPages: number }
+    }, { page?: number; limit?: number; role?: string } | void>({
+      query: (params) => ({
+        url: '/users',
+        params: params || undefined,
+      }),
+      providesTags: ['User'],
+    }),
+    updateUserStatus: builder.mutation<any, { userId: string; isActive?: boolean; role?: string }>({
+      query: ({ userId, ...body }) => ({
+        url: `/users/${userId}`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
+    getAdminAlerts: builder.query<{
+      infraAlerts: Array<{ id: string; source: string; severity: string; message: string; acknowledged: boolean; createdAt: string }>
+      fraudAlerts: Array<{ id: string; userId?: string | null; orderId?: string | null; type: string; severity: string; details: any; resolved: boolean; createdAt: string }>
+    }, void>({
+      query: () => '/users/admin/alerts',
+      providesTags: ['User'],
+    }),
+    acknowledgeAlert: builder.mutation<any, { id: string; type?: 'fraud' | 'infra' }>({
+      query: ({ id, ...body }) => ({
+        url: `/users/admin/alerts/${id}/acknowledge`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
   }),
 })
 
 export const {
   useLoginMutation,
   useRegisterMutation,
+  useGoogleLoginMutation,
+  useResendOtpMutation,
   useVerifyOtpMutation,
   useGetMeQuery,
   useUpdateProfileMutation,
@@ -475,4 +937,31 @@ export const {
   useUpdateProductMutation,
   useDeleteProductMutation,
   useUploadProductImageMutation,
+  useGetSellerOrderItemsQuery,
+  useGetSellerOrdersQuery,
+  useUpdateOrderStatusMutation,
+  useGetProductReviewsQuery,
+  useCreateProductReviewMutation,
+  useCreateReturnRequestMutation,
+  useProcessReturnRequestMutation,
+  useGetSellerAnalyticsQuery,
+  useGetAddressesQuery,
+  useCreateAddressMutation,
+  useUpdateAddressMutation,
+  useDeleteAddressMutation,
+  useChangePasswordMutation,
+  useValidateCouponMutation,
+  useGetCouponsQuery,
+  useCreateCouponMutation,
+  useGetNotificationsQuery,
+  useGetUnreadNotificationCountQuery,
+  useMarkNotificationReadMutation,
+  useMarkAllNotificationsReadMutation,
+  useGetAdminStatsQuery,
+  useGetAdminSellersQuery,
+  useUpdateSellerKycMutation,
+  useGetAllUsersQuery,
+  useUpdateUserStatusMutation,
+  useGetAdminAlertsQuery,
+  useAcknowledgeAlertMutation,
 } = api

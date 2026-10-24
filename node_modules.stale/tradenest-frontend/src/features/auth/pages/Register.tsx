@@ -7,8 +7,9 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
-import { useRegisterMutation } from '../../../app/api'
-import { setLoading } from '../authSlice'
+import { useRegisterMutation, useGoogleLoginMutation } from '../../../app/api'
+import { setCredentials, setLoading } from '../authSlice'
+import { GoogleLogin } from '@react-oauth/google'
 
 const registerSchema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
@@ -32,6 +33,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [registerMutation] = useRegisterMutation()
+  const [googleLoginMutation] = useGoogleLoginMutation()
 
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -44,7 +46,7 @@ export default function Register() {
     try {
       // Clean phone number: remove spaces, dashes, parentheses, keep only digits and leading +
       const cleanPhone = data.phone ? data.phone.replace(/[^\d+]/g, '') : undefined
-      await registerMutation({
+      const res = await registerMutation({
         email: data.email,
         password: data.password,
         firstName: data.firstName,
@@ -53,8 +55,9 @@ export default function Register() {
         role: data.role,
       }).unwrap()
 
-      toast.success('Account created! Please verify your email.')
-      navigate(`/verify-email?email=${encodeURIComponent(data.email)}&role=${data.role}`, { replace: true })
+      const devOtp = res?.devOtp
+      toast.success(devOtp ? `Account created! (Dev OTP: ${devOtp})` : 'Account created! Please verify your email.')
+      navigate(`/verify-email?email=${encodeURIComponent(data.email)}&role=${data.role}${devOtp ? `&otp=${devOtp}` : ''}`, { replace: true })
     } catch (error) {
       const message =
         typeof error === 'object' &&
@@ -71,6 +74,49 @@ export default function Register() {
       setIsLoading(false)
       dispatch(setLoading(false))
     }
+  }
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (!credentialResponse?.credential) {
+      toast.error('No credential received from Google')
+      return
+    }
+    setIsLoading(true)
+    dispatch(setLoading(true))
+    try {
+      const res = await googleLoginMutation({ credential: credentialResponse.credential }).unwrap()
+      const user = {
+        id: res.user.id,
+        email: res.user.email,
+        firstName: res.user.firstName,
+        lastName: res.user.lastName,
+        phone: res.user.phone ?? undefined,
+        avatarUrl: res.user.avatarUrl ?? undefined,
+        role: res.user.role as 'CUSTOMER' | 'SELLER' | 'ADMIN' | 'SUPER_ADMIN',
+      }
+      dispatch(setCredentials({
+        user,
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
+      }))
+      toast.success(`Account ready with Google! Welcome, ${res.user.firstName || 'User'}!`)
+      const redirectPath = res.user.role === 'ADMIN' || res.user.role === 'SUPER_ADMIN'
+        ? '/admin/dashboard'
+        : res.user.role === 'SELLER'
+        ? '/seller/dashboard'
+        : '/'
+      navigate(redirectPath, { replace: true })
+    } catch (error: any) {
+      const message = error?.data?.message || 'Google registration failed'
+      toast.error(message)
+    } finally {
+      setIsLoading(false)
+      dispatch(setLoading(false))
+    }
+  }
+
+  const handleGoogleError = () => {
+    toast.error('Google Sign-In was cancelled or failed')
   }
 
   return (
@@ -228,6 +274,28 @@ export default function Register() {
               )}
             </button>
           </form>
+
+          <div className="mt-6 relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-secondary-200 dark:border-secondary-700" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white dark:bg-secondary-800 text-secondary-500">Or sign up with</span>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col items-center justify-center">
+            <div className="w-full flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                theme="outline"
+                shape="rectangular"
+                width="384"
+                text="signup_with"
+              />
+            </div>
+          </div>
 
           <p className="mt-6 text-center text-sm text-secondary-600 dark:text-secondary-400">
             Already have an account? <Link to="/login" className="font-medium text-primary-600 hover:underline">Sign in</Link>

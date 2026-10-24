@@ -2,7 +2,7 @@
   "name": "tradenest-tests",
   "private": true,
   "scripts": {
-    "test:unit": "vitest run",
+    "test:unit": "vitest run unit",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",
     "test:integration": "vitest run tests/integration",

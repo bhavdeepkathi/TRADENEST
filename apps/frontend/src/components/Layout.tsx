@@ -1,11 +1,13 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAppSelector } from '../app/hooks'
 import { logout } from '../features/auth/authSlice'
-import { useAppDispatch } from '../app/hooks'
 import { clearCart } from '../features/cart/cartSlice'
-import { Menu, X, ShoppingCart, Heart, User, LogOut, Sun, Moon, Facebook, Twitter, Instagram, Youtube as YouTube, Mail, Phone, MapPin, Truck, Shield, RefreshCw, Star } from 'lucide-react'
+import { useAppDispatch } from '../app/hooks'
+import { Menu, X, ShoppingCart, Heart, User, LogOut, Sun, Moon, Facebook, Twitter, Instagram, Youtube as YouTube, Mail, Phone, MapPin, Truck, Shield, RefreshCw, Star, Bell } from 'lucide-react'
 import { useState } from 'react'
 import { clsx } from 'clsx'
+import NotificationDrawer from './NotificationDrawer'
+import { useGetUnreadNotificationCountQuery } from '../app/api'
 
 const footerLinks = {
   company: [
@@ -77,7 +79,12 @@ export default function Layout() {
   const cartCount = useAppSelector((s) => s.cart.items.reduce((a, i) => a + i.quantity, 0))
   const wishlistCount = useAppSelector((s) => s.wishlist.productIds.length)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [notificationOpen, setNotificationOpen] = useState(false)
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  const { data: unreadData } = useGetUnreadNotificationCountQuery(undefined, {
+    skip: !isAuthenticated,
+    pollingInterval: 20000,
+  })
 
   const handleLogout = () => {
     dispatch(logout())
@@ -105,6 +112,11 @@ export default function Layout() {
               <Link to="/products" className={clsx('text-sm font-medium transition-colors hover:text-primary-600', location.pathname.startsWith('/products') ? 'text-primary-600' : 'text-secondary-600 dark:text-secondary-300')}>
                 Products
               </Link>
+              {isAuthenticated && (
+                <Link to="/orders" className={clsx('text-sm font-medium transition-colors hover:text-primary-600', location.pathname.startsWith('/orders') ? 'text-primary-600' : 'text-secondary-600 dark:text-secondary-300')}>
+                  Orders
+                </Link>
+              )}
               <Link to="/cart" className="relative text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
                 <ShoppingCart className="h-5 w-5" />
                 {cartCount > 0 && <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-xs text-white">{cartCount}</span>}
@@ -119,6 +131,21 @@ export default function Layout() {
               <button onClick={toggleDark} className="p-2 rounded-lg text-secondary-600 hover:bg-secondary-100 dark:text-secondary-300 dark:hover:bg-secondary-800" aria-label={dark ? 'Light mode' : 'Dark mode'}>
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
+
+              {isAuthenticated && (
+                <button
+                  onClick={() => setNotificationOpen(true)}
+                  className="relative p-2 rounded-lg text-secondary-600 hover:bg-secondary-100 dark:text-secondary-300 dark:hover:bg-secondary-800 transition-colors"
+                  aria-label="Notifications"
+                >
+                  <Bell className="h-5 w-5" />
+                  {(unreadData?.count ?? 0) > 0 && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
+                      {unreadData!.count > 9 ? '9+' : unreadData!.count}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {isAuthenticated ? (
                 <div className="flex items-center gap-3">
@@ -361,6 +388,7 @@ export default function Layout() {
           </div>
         </div>
       </footer>
+      <NotificationDrawer isOpen={notificationOpen} onClose={() => setNotificationOpen(false)} />
     </div>
   )
 }

@@ -13,21 +13,35 @@ export interface AuthenticatedRequest extends Request {
 
 export async function authGuard(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = extractTokenFromHeader(req.headers.authorization);
-  if (!token) {
-    throw new AuthenticationError('Access token required');
+  if (token) {
+    try {
+      const payload = await verifyAccessToken(token);
+      (req as AuthenticatedRequest).user = {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role,
+      };
+      return next();
+    } catch {
+      // Token verification failed; fall back to gateway headers if set
+    }
   }
 
-  try {
-    const payload = await verifyAccessToken(token);
+  // Check if API Gateway proxy authenticated and forwarded user headers
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as UserRole;
+  const userEmail = (req.headers['x-user-email'] as string) || '';
+
+  if (userId && userRole) {
     (req as AuthenticatedRequest).user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
+      id: userId,
+      email: userEmail,
+      role: userRole,
     };
-    next();
-  } catch {
-    throw new AuthenticationError('Invalid or expired token');
+    return next();
   }
+
+  throw new AuthenticationError('Access token required');
 }
 
 export function requireRoles(...allowedRoles: UserRole[]) {

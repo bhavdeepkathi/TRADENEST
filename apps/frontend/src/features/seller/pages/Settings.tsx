@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { User, Bell, Shield, Palette, Save, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { useUpdateProfileMutation } from '../../../app/api'
 
 const settingsSchema = z.object({
   // General
@@ -67,13 +68,25 @@ export default function SellerSettings() {
     formState: { errors },
   } = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
-    defaultValues: initialValues,
+    defaultValues: () => {
+      try {
+        const saved = localStorage.getItem('tradenest_seller_settings')
+        return saved ? { ...initialValues, ...JSON.parse(saved) } : initialValues
+      } catch {
+        return initialValues
+      }
+    },
   })
 
-  const onSubmit = async (_data: SettingsForm) => {
+  const [updateProfile] = useUpdateProfileMutation()
+
+  const onSubmit = async (data: SettingsForm) => {
     setIsSaving(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      localStorage.setItem('tradenest_seller_settings', JSON.stringify(data))
+      if (data.phone) {
+        await updateProfile({ phone: data.phone.replace(/[^\d+]/g, '') }).unwrap()
+      }
       toast.success('Settings saved successfully!')
     } catch {
       toast.error('Failed to save settings')

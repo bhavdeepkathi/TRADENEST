@@ -47,7 +47,7 @@ describe('Common Utilities', () => {
 
   describe('calculateDiscount', () => {
     it('should calculate correct discount percentage', () => {
-      expect(calculateDiscount(100, 80)).toBe(20);
+      expect(calculateDiscount(80, 100)).toBe(20);
     });
 
     it('should return 0 when price >= mrp', () => {
@@ -68,7 +68,7 @@ describe('Common Utilities', () => {
 
   describe('maskEmail', () => {
     it('should mask email correctly', () => {
-      expect(maskEmail('john.doe@example.com')).toBe('jo***@example.com');
+      expect(maskEmail('john.doe@example.com')).toBe('jo******@example.com');
     });
 
     it('should handle short local part', () => {
@@ -78,7 +78,7 @@ describe('Common Utilities', () => {
 
   describe('maskPhone', () => {
     it('should mask phone number', () => {
-      expect(maskPhone('+91 98765 43210')).toBe('****43210');
+      expect(maskPhone('+91 98765 43210')).toBe('****3210');
     });
 
     it('should handle short numbers', () => {

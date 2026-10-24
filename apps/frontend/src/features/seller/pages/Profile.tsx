@@ -5,7 +5,7 @@ import { User, Camera, Save, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAppSelector } from '../../../app/hooks'
-import { useUpdateProfileMutation } from '../../../app/api'
+import { useUpdateProfileMutation, useUploadProductImageMutation } from '../../../app/api'
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -21,8 +21,10 @@ type ProfileForm = z.infer<typeof profileSchema>
 export default function SellerProfile() {
   const { user } = useAppSelector((state) => state.auth)
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [updateProfile] = useUpdateProfileMutation()
+  const [uploadImage] = useUploadProductImageMutation()
 
   const {
     register,
@@ -43,6 +45,12 @@ export default function SellerProfile() {
   const onSubmit = async (data: ProfileForm) => {
     setIsSaving(true)
     try {
+      let avatarUrl = user?.avatarUrl || undefined
+      if (selectedFile) {
+        const uploadRes = await uploadImage(selectedFile).unwrap()
+        avatarUrl = uploadRes.url
+      }
+
       // Clean phone number
       const cleanPhone = data.phone ? data.phone.replace(/[^\d+]/g, '') : undefined
       
@@ -50,6 +58,7 @@ export default function SellerProfile() {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: cleanPhone,
+        avatarUrl,
       }).unwrap()
       
       toast.success('Profile updated successfully!')
@@ -73,6 +82,7 @@ export default function SellerProfile() {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      setSelectedFile(file)
       const reader = new FileReader()
       reader.onload = () => setAvatar(reader.result as string)
       reader.readAsDataURL(file)

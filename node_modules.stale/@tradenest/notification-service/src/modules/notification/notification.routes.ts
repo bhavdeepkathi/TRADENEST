@@ -4,6 +4,7 @@ import { prisma } from '../../utils/prisma';
 import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError } from '@tradenest/common';
 import { NotificationType, PaginationQuerySchema } from '@tradenest/common';
+import { getSocketIO } from '../../utils/socket';
 
 const router = Router();
 function validate(schema: z.ZodSchema) { return (req: any, res: any, next: any) => { const result = schema.safeParse(req.body); if (!result.success) throw new ValidationError('Invalid request data', result.error.flatten().fieldErrors); req.body = result.data; next(); }; }
@@ -48,7 +49,10 @@ router.patch('/read-all', asyncHandler(async (req, res) => {
 // POST /api/notifications - Create notification (internal)
 router.post('/', validate(z.object({ userId: z.string(), type: z.nativeEnum(NotificationType), title: z.string(), body: z.string(), data: z.record(z.any()).optional() })), asyncHandler(async (req, res) => {
   const notification = await prisma.notification.create({ data: req.body });
-  // TODO: Emit via WebSocket
+  const io = getSocketIO();
+  if (io) {
+    io.to(`user:${req.body.userId}`).emit('notification', notification);
+  }
   res.status(201).json(notification);
 }));
 

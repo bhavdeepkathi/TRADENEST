@@ -4,10 +4,10 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Loader2, Mail, ArrowLeft, CheckCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useAppDispatch } from '../../../app/hooks'
-import { useVerifyOtpMutation } from '../../../app/api'
+import { useVerifyOtpMutation, useResendOtpMutation } from '../../../app/api'
 import { setCredentials, setLoading } from '../authSlice'
 
 const verifySchema = z.object({
@@ -25,8 +25,10 @@ export default function VerifyEmail() {
   const [resendCountdown, setResendCountdown] = useState(0)
 
   const email = searchParams.get('email') || ''
+  const devOtp = searchParams.get('otp') || ''
 
   const [verifyOtp] = useVerifyOtpMutation()
+  const [resendOtp, { isLoading: isResending }] = useResendOtpMutation()
 
   const {
     handleSubmit,
@@ -36,16 +38,27 @@ export default function VerifyEmail() {
     formState: { errors },
   } = useForm<VerifyForm>({
     resolver: zodResolver(verifySchema),
+    defaultValues: {
+      otp: devOtp,
+    },
   })
+
+  useEffect(() => {
+    if (devOtp && devOtp.length === 6) {
+      setValue('otp', devOtp, { shouldValidate: true })
+    }
+  }, [devOtp, setValue])
 
   const otpValue = watch('otp') || ''
 
   const handleResend = async () => {
-    if (resendCountdown > 0) return
+    if (resendCountdown > 0 || isResending) return
     try {
-      // In a real app, you'd call a resend OTP endpoint
-      // For now, just show the OTP from console (dev only)
-      toast.success('Check console for OTP (dev mode)')
+      const res = await resendOtp({ email }).unwrap()
+      if (res.devOtp) {
+        setValue('otp', res.devOtp, { shouldValidate: true })
+      }
+      toast.success(res.message || 'Verification code dispatched successfully!')
       setResendCountdown(60)
       const interval = setInterval(() => {
         setResendCountdown(c => {
@@ -56,8 +69,9 @@ export default function VerifyEmail() {
           return c - 1
         })
       }, 1000)
-    } catch {
-      toast.error('Failed to resend OTP')
+    } catch (err: any) {
+      const message = err?.data?.message || 'Failed to resend verification code'
+      toast.error(message)
     }
   }
 
@@ -146,7 +160,16 @@ export default function VerifyEmail() {
             <p className="mt-2 text-secondary-600 dark:text-secondary-400">
               We&apos;ve sent a 6-digit code to <strong className="text-secondary-900 dark:text-secondary-50">{email}</strong>
             </p>
+            <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">
+              📬 If you don&apos;t see it in Primary, check your <strong>Spam / Junk</strong> folder.
+            </p>
           </div>
+
+          {devOtp && (
+            <div className="mb-6 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-700 dark:text-indigo-300 text-center font-medium">
+              ⚡ <strong>Dev Auto-Fill:</strong> Backend test code <span className="font-mono font-bold tracking-widest text-indigo-900 dark:text-indigo-200">{devOtp}</span> has been pre-filled!
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Hidden input for form submission */}
@@ -161,17 +184,24 @@ export default function VerifyEmail() {
                   inputMode="numeric"
                   pattern="[0-9]"
                   value={otpValue[i] || ''}
+                  onPaste={(e) => {
+                    e.preventDefault()
+                    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+                    if (pasted) {
+                      setValue('otp', pasted, { shouldValidate: true })
+                      const targetInput = document.querySelector(`input[aria-label="Digit ${Math.min(pasted.length, 6)}"]`) as HTMLInputElement
+                      targetInput?.focus()
+                    }
+                  }}
                   onChange={(e) => {
-                    const digits = otpValue.split('')
-                    digits[i] = e.target.value
-                    const newValue = digits.join('')
-                    setValue('otp', newValue, { shouldValidate: true })
-                    if (e.target.value && i < 5) {
+                    const char = e.target.value.replace(/\D/g, '').slice(-1)
+                    const chars = (otpValue + '      ').slice(0, 6).split('')
+                    chars[i] = char || ' '
+                    const cleanValue = chars.join('').replace(/\s+$/, '')
+                    setValue('otp', cleanValue, { shouldValidate: true })
+                    if (char && i < 5) {
                       const nextInput = document.querySelector(`input[aria-label="Digit ${i + 2}"]`) as HTMLInputElement
                       nextInput?.focus()
-                    } else if (!e.target.value && i > 0) {
-                      const prevInput = document.querySelector(`input[aria-label="Digit ${i}"]`) as HTMLInputElement
-                      prevInput?.focus()
                     }
                   }}
                   onKeyDown={(e) => {
@@ -221,7 +251,7 @@ export default function VerifyEmail() {
               </button>
             </p>
             <p className="mt-2 text-xs text-secondary-500 dark:text-secondary-400">
-              <strong>Dev Mode:</strong> Check backend console for OTP
+              Check your email inbox (or backend console / dev banner above)
             </p>
           </div>
 

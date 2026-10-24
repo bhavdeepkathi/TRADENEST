@@ -1,13 +1,19 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAppSelector } from './app/hooks'
-import { ProtectedRoute, GuestRoute } from './components/RoleBasedRoute'
+import { ProtectedRoute, GuestRoute, AdminRoute } from './components/RoleBasedRoute'
 import { RoleFallbackRedirect } from './components/RoleFallbackRedirect'
 import Layout from './components/Layout'
 import SellerLayout from './components/SellerLayout'
+import AdminLayout from './components/AdminLayout'
 import Home from './features/catalog/pages/Home'
 import ProductList from './features/catalog/pages/ProductList'
 import ProductDetail from './features/catalog/pages/ProductDetail'
+import AdminDashboard from './features/admin/pages/AdminDashboard'
+import KycApprovals from './features/admin/pages/KycApprovals'
+import ProductModeration from './features/admin/pages/ProductModeration'
+import UserManagement from './features/admin/pages/UserManagement'
+import AlertsManagement from './features/admin/pages/AlertsManagement'
 import Login from './features/auth/pages/Login'
 import Register from './features/auth/pages/Register'
 import VerifyEmail from './features/auth/pages/VerifyEmail'
@@ -65,14 +71,14 @@ function App() {
         <Route path="/verify-email" element={<VerifyEmail />} />
       </Route>
 
-      {/* Customer Routes */}
+      {/* Catalog & Customer Routes */}
       <Route element={<Layout />}>
         <Route element={<PageTransition />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/products" element={<ProductList />} />
+          <Route path="/products/:slug" element={<ProductDetail />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<CustomerRoute />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/products" element={<ProductList />} />
-              <Route path="/products/:slug" element={<ProductDetail />} />
               <Route path="/cart" element={<CartPage />} />
               <Route path="/wishlist" element={<WishlistPage />} />
               <Route path="/checkout" element={<Checkout />} />
@@ -98,6 +104,19 @@ function App() {
             <Route path="/seller/settings" element={<SellerSettings />} />
             <Route path="/seller/profile" element={<SellerProfile />} />
             <Route path="/seller/help" element={<div className="p-8">Help Center</div>} />
+          </Route>
+        </Route>
+      </Route>
+
+      {/* Admin & Super-Admin Routes */}
+      <Route element={<AdminLayout />}>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AdminRoute />}>
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/sellers" element={<KycApprovals />} />
+            <Route path="/admin/products" element={<ProductModeration />} />
+            <Route path="/admin/users" element={<UserManagement />} />
+            <Route path="/admin/alerts" element={<AlertsManagement />} />
           </Route>
         </Route>
       </Route>

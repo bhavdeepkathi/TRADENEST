@@ -166,6 +166,249 @@ router.get('/', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), a
   });
 }));
 
+// Admin: Get platform aggregate stats
+router.get('/admin/stats', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const [
+    totalUsers,
+    totalCustomers,
+    sellerStats,
+    pendingKycStats,
+    pendingProdStats,
+    orderStats,
+  ] = await Promise.all([
+    prisma.user.count().catch(() => 0),
+    prisma.user.count({ where: { role: 'CUSTOMER' } }).catch(() => 0),
+    prisma.$queryRaw<{ count: string }[]>`SELECT COUNT(*)::text as count FROM "Seller"`
+      .catch(() => [{ count: '0' }]),
+    prisma.$queryRaw<{ count: string }[]>`SELECT COUNT(*)::text as count FROM "Seller" WHERE "kycStatus" = 'PENDING'`
+      .catch(() => [{ count: '0' }]),
+    prisma.$queryRaw<{ count: string }[]>`SELECT COUNT(*)::text as count FROM "Product" WHERE "status" = 'PENDING_APPROVAL'`
+      .catch(() => [{ count: '0' }]),
+    prisma.$queryRaw<{ sum: string; count: string }[]>`SELECT COALESCE(SUM("total"), 0)::text as sum, COUNT(*)::text as count FROM "Order"`
+      .catch(() => [{ sum: '0', count: '0' }]),
+  ]);
+
+  const totalSellers = parseInt(sellerStats[0]?.count || '0', 10);
+  const pendingKycCount = parseInt(pendingKycStats[0]?.count || '0', 10);
+  const pendingProductsCount = parseInt(pendingProdStats[0]?.count || '0', 10);
+  const totalRevenue = parseFloat(orderStats[0]?.sum || '0');
+  const totalOrders = parseInt(orderStats[0]?.count || '0', 10);
+
+  res.json({
+    totalUsers,
+    totalCustomers,
+    totalSellers,
+    pendingKycCount,
+    pendingProductsCount,
+    totalRevenue,
+    totalOrders,
+  });
+}));
+
+// Admin: Get all sellers (with user profile & KYC details)
+router.get('/admin/sellers', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const kycStatus = req.query.kycStatus as string | undefined;
+
+  let rawSellers: any[] = [];
+  try {
+    if (kycStatus && ['PENDING', 'APPROVED', 'REJECTED'].includes(kycStatus)) {
+      rawSellers = await prisma.$queryRaw`
+        SELECT 
+          s."id",
+          s."userId",
+          s."storeName",
+          s."gstin",
+          s."kycStatus",
+          s."kycRejectionReason",
+          s."totalRevenue"::text as "totalRevenue",
+          s."totalOrders",
+          s."createdAt",
+          json_build_object(
+            'id', u."id",
+            'email', u."email",
+            'firstName', u."firstName",
+            'lastName', u."lastName",
+            'phone', u."phone",
+            'avatarUrl', u."avatarUrl",
+            'isActive', u."isActive"
+          ) as "user",
+          (SELECT COUNT(*)::int FROM "Product" p WHERE p."sellerId" = s."id") as "productCount"
+        FROM "Seller" s
+        LEFT JOIN "User" u ON s."userId" = u."id"
+        WHERE s."kycStatus" = ${kycStatus}::"KYCStatus"
+        ORDER BY s."createdAt" DESC
+      `;
+    } else {
+      rawSellers = await prisma.$queryRaw`
+        SELECT 
+          s."id",
+          s."userId",
+          s."storeName",
+          s."gstin",
+          s."kycStatus",
+          s."kycRejectionReason",
+          s."totalRevenue"::text as "totalRevenue",
+          s."totalOrders",
+          s."createdAt",
+          json_build_object(
+            'id', u."id",
+            'email', u."email",
+            'firstName', u."firstName",
+            'lastName', u."lastName",
+            'phone', u."phone",
+            'avatarUrl', u."avatarUrl",
+            'isActive', u."isActive"
+          ) as "user",
+          (SELECT COUNT(*)::int FROM "Product" p WHERE p."sellerId" = s."id") as "productCount"
+        FROM "Seller" s
+        LEFT JOIN "User" u ON s."userId" = u."id"
+        ORDER BY s."createdAt" DESC
+      `;
+    }
+  } catch (err) {
+    console.warn('Failed to query raw sellers:', err);
+    const sellerUsers = await prisma.user.findMany({
+      where: { role: 'SELLER' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatarUrl: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+    rawSellers = sellerUsers.map((u) => ({
+      id: u.id,
+      userId: u.id,
+      storeName: `${u.firstName}'s Store`,
+      gstin: null,
+      kycStatus: 'APPROVED',
+      kycRejectionReason: null,
+      totalRevenue: '0',
+      totalOrders: 0,
+      createdAt: u.createdAt,
+      user: u,
+      productCount: 0,
+    }));
+  }
+
+  const sellers = (rawSellers || []).map((s: any) => ({
+    id: s.id,
+    userId: s.userId,
+    storeName: s.storeName,
+    gstin: s.gstin,
+    kycStatus: s.kycStatus,
+    kycRejectionReason: s.kycRejectionReason,
+    totalRevenue: Number(s.totalRevenue || 0),
+    totalOrders: Number(s.totalOrders || 0),
+    createdAt: s.createdAt,
+    user: s.user || null,
+    _count: {
+      products: Number(s.productCount || 0),
+    },
+  }));
+
+  res.json({ data: sellers });
+}));
+
+// Admin: Update seller KYC status
+router.patch('/admin/sellers/:id/kyc', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const { status, rejectionReason } = req.body || {};
+  if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) {
+    throw new ValidationError('Status must be APPROVED, REJECTED, or PENDING');
+  }
+
+  const sellers: any = await prisma.$queryRaw`
+    SELECT "id", "userId", "storeName", "kycStatus", "kycRejectionReason"
+    FROM "Seller"
+    WHERE "id" = ${req.params.id} OR "userId" = ${req.params.id}
+    LIMIT 1
+  `.catch(() => []);
+
+  if (!sellers || sellers.length === 0) throw new NotFoundError('Seller');
+  const seller = sellers[0];
+  const reason = status === 'REJECTED' ? rejectionReason || 'KYC documentation rejected' : null;
+
+  try {
+    await prisma.$executeRaw`
+      UPDATE "Seller"
+      SET "kycStatus" = ${status}::"KYCStatus", "kycRejectionReason" = ${reason}, "updatedAt" = NOW()
+      WHERE "id" = ${seller.id}
+    `;
+  } catch (err: any) {
+    console.warn('Failed to update seller KYC status:', err);
+  }
+
+  // Notify seller of KYC decision
+  try {
+    const notifId = 'notif_' + Math.random().toString(36).substring(2, 11);
+    const title = status === 'APPROVED' ? 'Seller KYC Approved!' : 'Seller KYC Update';
+    const body = status === 'APPROVED' 
+      ? 'Congratulations! Your seller account has been approved. You can now sell products.'
+      : `Your seller KYC status is: ${status}. ${rejectionReason ? `Reason: ${rejectionReason}` : ''}`;
+    await prisma.$executeRaw`
+      INSERT INTO "Notification" ("id", "userId", "type", "title", "body", "read", "createdAt")
+      VALUES (${notifId}, ${seller.userId}, 'SYSTEM'::"NotificationType", ${title}, ${body}, false, NOW())
+    `;
+  } catch {}
+
+  res.json({
+    ...seller,
+    kycStatus: status,
+    kycRejectionReason: reason,
+  });
+}));
+
+// Admin: Get alerts (Infra & Fraud)
+router.get('/admin/alerts', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const [infraAlerts, fraudAlerts] = await Promise.all([
+    prisma.$queryRaw<any[]>`
+      SELECT "id", "source", "severity", "message", "acknowledged", "createdAt"
+      FROM "InfraAlert"
+      ORDER BY "createdAt" DESC
+      LIMIT 50
+    `.catch(() => []),
+    prisma.$queryRaw<any[]>`
+      SELECT "id", "userId", "orderId", "type", "severity", "details", "resolved", "createdAt"
+      FROM "FraudAlert"
+      ORDER BY "createdAt" DESC
+      LIMIT 50
+    `.catch(() => []),
+  ]);
+
+  res.json({
+    infraAlerts: infraAlerts || [],
+    fraudAlerts: fraudAlerts || [],
+  });
+}));
+
+// Admin: Acknowledge alert
+router.patch('/admin/alerts/:id/acknowledge', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const { type } = req.body || {};
+  try {
+    if (type === 'fraud') {
+      await prisma.$executeRaw`
+        UPDATE "FraudAlert"
+        SET "resolved" = true
+        WHERE "id" = ${req.params.id}
+      `;
+      return res.json({ id: req.params.id, resolved: true });
+    } else {
+      await prisma.$executeRaw`
+        UPDATE "InfraAlert"
+        SET "acknowledged" = true
+        WHERE "id" = ${req.params.id}
+      `;
+      return res.json({ id: req.params.id, acknowledged: true });
+    }
+  } catch (err: any) {
+    return res.json({ id: req.params.id, acknowledged: true, error: err?.message });
+  }
+}));
+
 // Admin: Get user by ID
 router.get('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({

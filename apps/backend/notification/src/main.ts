@@ -15,11 +15,13 @@ import { healthRouter } from './modules/health/health.routes';
 import { connectRedis } from './utils/redis';
 import { prisma } from './utils/prisma';
 import { logger } from './utils/logger';
+import { setSocketIO } from './utils/socket';
 
 async function bootstrap() {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, { cors: { origin: config.CORS_ORIGIN, credentials: true } });
+  setSocketIO(io);
 
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));

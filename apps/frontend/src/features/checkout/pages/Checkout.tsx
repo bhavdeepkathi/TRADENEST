@@ -2,14 +2,14 @@ import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone } from 'lucide-react'
+import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag } from 'lucide-react'
 import { useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { clearCart } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { Link, useNavigate } from 'react-router-dom'
-import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery } from '../../../app/api'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery, useValidateCouponMutation } from '../../../app/api'
 
 const checkoutSchema = z.object({
   fullName: z.string().min(2),
@@ -71,13 +71,44 @@ export default function Checkout() {
   const [createPaymentIntent] = useCreatePaymentIntentMutation()
   const [verifyPayment] = useVerifyPaymentMutation()
   const [confirmPayment] = useConfirmPaymentMutation()
+  const [validateCoupon, { isLoading: isValidatingCoupon }] = useValidateCouponMutation()
   const { data: cart, isLoading: cartLoading, error: cartError } = useGetCartQuery(undefined, { skip: !accessToken })
   const { data: wallet } = useGetWalletQuery(undefined, { skip: !accessToken })
 
+  const location = useLocation()
+  const initialCouponCode = (location.state as any)?.couponCode || ''
+  const initialDiscount = (location.state as any)?.discount || 0
+  const [couponInput, setCouponInput] = useState(initialCouponCode)
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(
+    initialCouponCode && initialDiscount ? { code: initialCouponCode, discount: initialDiscount } : null
+  )
+
   const items = cart?.items || []
   const subtotal = Number(cart?.subtotal || 0)
+  const discount = appliedCoupon ? appliedCoupon.discount : 0
   const shipping = subtotal > 499 ? 0 : 99
-  const total = subtotal + shipping
+  const total = Math.max(0, subtotal - discount) + shipping
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return
+    try {
+      const res = await validateCoupon({ code: couponInput.trim().toUpperCase(), subtotal }).unwrap()
+      if (res.valid) {
+        setAppliedCoupon({ code: res.code, discount: res.discount })
+        toast.success(`Coupon ${res.code} applied! Saved ₹${res.discount}`)
+        setCouponInput('')
+      } else {
+        toast.error('Invalid coupon code')
+      }
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Invalid coupon code')
+    }
+  }
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null)
+    toast.success('Coupon removed')
+  }
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
@@ -185,7 +216,7 @@ export default function Checkout() {
           country: 'IN',
         },
         paymentMethod: data.paymentMethod,
-        couponCode: undefined,
+        couponCode: appliedCoupon?.code || undefined,
       }).unwrap()
 
       const order = orderResult
@@ -538,11 +569,61 @@ export default function Checkout() {
                 ))}
               </div>
 
+              {/* Coupon Section */}
+              <div className="mb-4 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-emerald-600" />
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                        {appliedCoupon.code}
+                      </span>
+                      <span className="text-xs text-secondary-500">
+                        (-₹{appliedCoupon.discount.toLocaleString()})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-xs text-rose-600 hover:underline font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-primary-600" />
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleApplyCoupon())}
+                      placeholder="Coupon code"
+                      className="flex-1 bg-transparent focus:outline-none text-xs uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={isValidatingCoupon || !couponInput.trim()}
+                      className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50"
+                    >
+                      {isValidatingCoupon ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-3 mb-6 border-t border-secondary-200 pt-4 dark:border-secondary-700">
                 <div className="flex justify-between text-sm">
                   <span className="text-secondary-600 dark:text-secondary-400">Subtotal</span>
                   <span className="font-medium text-secondary-900 dark:text-secondary-50">₹{subtotal.toLocaleString()}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
+                    <span>Coupon Discount</span>
+                    <span className="font-medium">-₹{discount.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-secondary-600 dark:text-secondary-400">Shipping</span>
                   <span className="font-medium text-secondary-900 dark:text-secondary-50">

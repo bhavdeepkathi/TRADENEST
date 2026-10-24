@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Truck, Box, RotateCcw, Eye, Download, Star, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
+import toast from 'react-hot-toast'
 import { useGetOrdersQuery } from '../../../app/api'
+import { useAppSelector } from '../../../app/hooks'
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
   DELIVERED: { label: 'Delivered', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: Box },
@@ -24,11 +26,54 @@ const paymentStatusConfig: Record<string, { label: string; color: string }> = {
 
 export default function Orders() {
   const [filter, setFilter] = useState('all')
-  const { data: ordersResponse, isLoading, error, refetch } = useGetOrdersQuery({
-    page: 1,
-    limit: 20,
-    status: filter === 'all' ? undefined : filter,
-  })
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const accessToken = useAppSelector((s) => s.auth.accessToken)
+  const { data: ordersResponse, isLoading, error, refetch } = useGetOrdersQuery(
+    {
+      page: 1,
+      limit: 20,
+      status: filter === 'all' ? undefined : filter,
+    },
+    { skip: false }
+  )
+
+  const handleDownloadInvoice = async (e: React.MouseEvent, orderId: string, invoiceNumber?: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      setDownloadingId(orderId)
+      const res = await fetch(`/api/orders/${orderId}/invoice`, {
+        headers: {
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+      })
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null)
+        throw new Error(errJson?.message || 'Failed to download invoice')
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Invoice-${invoiceNumber || orderId.slice(-8).toUpperCase()}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Invoice downloaded successfully')
+    } catch (err: any) {
+      toast.error(err.message || 'Error downloading invoice')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  // Auto-refetch when returning to orders page (e.g., after checkout)
+  useEffect(() => {
+    refetch()
+  }, [location.pathname, refetch])
 
   const orders = ordersResponse?.data || []
 
@@ -145,8 +190,8 @@ export default function Orders() {
                   </div>
 
                   <div className="mb-4 flex items-center gap-4 sm:mb-0 sm:justify-center">
-                    <span className="text-sm text-secondary-600 dark:text-secondary-400">{order.items.length} item{order.items.length > 1 ? 's' : ''}</span>
-                    <span className="font-semibold text-secondary-900 dark:text-secondary-50">₹{order.total.toLocaleString()}</span>
+                    <span className="text-sm text-secondary-600 dark:text-secondary-400">{(order.items || []).length} item{(order.items || []).length > 1 ? 's' : ''}</span>
+                    <span className="font-semibold text-secondary-900 dark:text-secondary-50">₹{Number(order.total || 0).toLocaleString('en-IN')}</span>
                   </div>
 
                   <div className="mb-4 flex items-center justify-center gap-2 sm:mb-0">
@@ -159,27 +204,55 @@ export default function Orders() {
                         {paymentStatusConfig[order.payment.status]?.label || order.payment.status}
                       </span>
                     )}
+                    {order.returns && order.returns.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                        <RotateCcw className="h-3 w-3" />
+                        Return: {order.returns[0].status}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <button className="btn btn-outline text-sm">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate(`/orders/${order.id}`)
+                      }}
+                      className="btn btn-outline text-sm"
+                    >
                       <Eye className="mr-1 h-4 w-4" />
                       View
                     </button>
-                    {order.payment?.status === 'SUCCESS' && order.status === 'DELIVERED' && (
-                      <button className="btn btn-outline text-sm">
-                        <Download className="mr-1 h-4 w-4" />
+                    {(order.payment?.status === 'SUCCESS' || order.status === 'DELIVERED') && (
+                      <button
+                        onClick={(e) => handleDownloadInvoice(e, order.id, order.invoice?.number)}
+                        disabled={downloadingId === order.id}
+                        className="btn btn-outline text-sm"
+                      >
+                        {downloadingId === order.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin text-primary-600" /> : <Download className="mr-1 h-4 w-4 text-primary-600" />}
                         Invoice
                       </button>
                     )}
                     {order.status === 'DELIVERED' && (
-                      <button className="btn btn-outline text-sm">
-                        <Star className="mr-1 h-4 w-4" />
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate(`/orders/${order.id}`)
+                        }}
+                        className="btn btn-outline text-sm"
+                      >
+                        <Star className="mr-1 h-4 w-4 text-amber-500 fill-amber-400" />
                         Review
                       </button>
                     )}
-                    {order.status === 'DELIVERED' && (
-                      <button className="btn btn-outline text-sm text-orange-600 hover:bg-orange-50 border-orange-200">
+                    {order.status === 'DELIVERED' && (!order.returns || order.returns.length === 0 || order.returns[0]?.status === 'REJECTED') && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate(`/orders/${order.id}`)
+                        }}
+                        className="btn btn-outline text-sm text-orange-600 hover:bg-orange-50 border-orange-200"
+                      >
                         <RotateCcw className="mr-1 h-4 w-4" />
                         Return
                       </button>
@@ -191,13 +264,13 @@ export default function Orders() {
               {/* Order items preview */}
               <div className="px-4 pb-4 border-t border-secondary-200 dark:border-secondary-700">
                 <div className="flex flex-wrap gap-2">
-                  {order.items.slice(0, 3).map((item) => (
+                  {(order.items || []).slice(0, 3).map((item) => (
                     <span key={item.id} className="text-xs text-secondary-600 dark:text-secondary-400 bg-secondary-100 dark:bg-secondary-800 px-2 py-1 rounded">
                       {item.title} × {item.quantity}
                     </span>
                   ))}
-                  {order.items.length > 3 && (
-                    <span className="text-xs text-secondary-500">+{order.items.length - 3} more</span>
+                  {(order.items || []).length > 3 && (
+                    <span className="text-xs text-secondary-500">+{(order.items || []).length - 3} more</span>
                   )}
                 </div>
                 

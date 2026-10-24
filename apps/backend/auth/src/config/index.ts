@@ -1,4 +1,13 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+// Ensure environment variables are loaded from root .env and local paths
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../../.env') });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -28,9 +37,13 @@ const envSchema = z.object({
 
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_SECURE: z.coerce.boolean().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().email().default('noreply@tradenest.local'),
+  EMAIL_FROM: z.string().default('TRADENEST <noreply@tradenest.local>'),
+
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
 
   OTP_EXPIRY_MINUTES: z.coerce.number().default(5),
   OTP_LENGTH: z.coerce.number().default(6),

@@ -79,6 +79,100 @@ router.get('/:id', asyncHandler(async (req, res) => {
   res.json(product);
 }));
 
+// GET /api/products/:id/reviews - Get product reviews
+router.get('/:id/reviews', asyncHandler(async (req, res) => {
+  const product = await prisma.product.findFirst({
+    where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+    select: { id: true },
+  });
+  if (!product) throw new NotFoundError('Product');
+
+  const reviews = await prisma.review.findMany({
+    where: { productId: product.id },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  res.json({ data: reviews });
+}));
+
+// POST /api/products/:id/reviews - Submit/Update product review
+router.post('/:id/reviews', authMiddleware, asyncHandler(async (req, res) => {
+  const userId = req.headers['x-user-id'] as string;
+  if (!userId) {
+    throw new ValidationError('Authentication required');
+  }
+
+  const product = await prisma.product.findFirst({
+    where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+    select: { id: true },
+  });
+  if (!product) throw new NotFoundError('Product');
+
+  const { rating, title, body } = req.body || {};
+  const numRating = Number(rating);
+  if (!numRating || numRating < 1 || numRating > 5) {
+    throw new ValidationError('Rating must be an integer between 1 and 5');
+  }
+
+  // Check if user purchased this product
+  let isVerifiedPurchase = false;
+  try {
+    const userOrder = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT o.id FROM "Order" o 
+      JOIN "OrderItem" oi ON oi."orderId" = o.id 
+      WHERE o."userId" = ${userId} AND oi."productId" = ${product.id}
+      LIMIT 1
+    `;
+    isVerifiedPurchase = userOrder.length > 0;
+  } catch {
+    isVerifiedPurchase = true;
+  }
+
+  const review = await prisma.review.upsert({
+    where: {
+      userId_productId: {
+        userId,
+        productId: product.id,
+      },
+    },
+    create: {
+      userId,
+      productId: product.id,
+      rating: Math.round(numRating),
+      title: title ? String(title).trim() : null,
+      body: body ? String(body).trim() : null,
+      isVerifiedPurchase,
+      images: [],
+    },
+    update: {
+      rating: Math.round(numRating),
+      title: title ? String(title).trim() : null,
+      body: body ? String(body).trim() : null,
+      isVerifiedPurchase,
+    },
+  });
+
+  // Recalculate average rating and review count
+  const allReviews = await prisma.review.findMany({
+    where: { productId: product.id },
+    select: { rating: true },
+  });
+  const reviewCount = allReviews.length;
+  const ratingAvg = reviewCount > 0
+    ? allReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount
+    : 0;
+
+  await prisma.product.update({
+    where: { id: product.id },
+    data: {
+      ratingAvg: Math.round(ratingAvg * 100) / 100,
+      reviewCount,
+    },
+  });
+
+  res.status(201).json(review);
+}));
+
 // POST /api/products - Create product (seller)
 router.post('/', authMiddleware, asyncHandler(async (req, res) => {
   const sellerId = req.headers['x-user-id'] as string;

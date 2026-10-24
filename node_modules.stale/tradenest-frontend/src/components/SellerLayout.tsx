@@ -20,6 +20,8 @@ import {
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
+import NotificationDrawer from './NotificationDrawer'
+import { useGetUnreadNotificationCountQuery } from '../app/api'
 
 const sellerNavItems = [
   { label: 'Dashboard', href: '/seller/dashboard', icon: LayoutDashboard },
@@ -36,6 +38,8 @@ export default function SellerLayout() {
   const { user } = useAppSelector((s) => s.auth)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [notificationOpen, setNotificationOpen] = useState(false)
+  const { data: unreadData } = useGetUnreadNotificationCountQuery(undefined, { pollingInterval: 20000 })
 
   const handleLogout = () => {
     dispatch(logout())
@@ -190,9 +194,17 @@ export default function SellerLayout() {
             </div>
 
             <div className="flex items-center gap-4">
-              <button onClick={() => toast.success('Notifications coming soon!')} className="relative p-2 rounded-lg text-secondary-500 hover:text-secondary-700 hover:bg-secondary-100 dark:text-secondary-400 dark:hover:text-secondary-200 dark:hover:bg-secondary-700 transition-colors" aria-label="Notifications">
+              <button
+                onClick={() => setNotificationOpen(true)}
+                className="relative p-2 rounded-lg text-secondary-500 hover:text-secondary-700 hover:bg-secondary-100 dark:text-secondary-400 dark:hover:text-secondary-200 dark:hover:bg-secondary-700 transition-colors"
+                aria-label="Notifications"
+              >
                 <Bell className="h-5 w-5" />
-                <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">3</span>
+                {(unreadData?.count ?? 0) > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                    {unreadData!.count > 9 ? '9+' : unreadData!.count}
+                  </span>
+                )}
               </button>
 
               <div className="hidden sm:flex items-center gap-3">
@@ -211,6 +223,8 @@ export default function SellerLayout() {
           <Outlet />
         </main>
       </div>
+
+      <NotificationDrawer isOpen={notificationOpen} onClose={() => setNotificationOpen(false)} />
     </div>
   )
 }

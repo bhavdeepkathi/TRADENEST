@@ -7,6 +7,8 @@ import { tokenStore, otpStore } from '../../utils/redis';
 import { generateAccessToken, generateRefreshToken, parseTokenExpiry } from '../../utils/jwt';
 import { logger } from '../../utils/logger';
 import { RegisterDto, LoginDto, VerifyOtpDto, ForgotPasswordDto, ResetPasswordDto, TokenPair, UserRole, UpdateProfileDto } from '@tradenest/common';
+import { OAuth2Client } from 'google-auth-library';
+import { sendVerificationEmail } from '../../utils/mailer';
 
 export class AuthRepository {
   async findUserByEmail(email: string) {
@@ -98,10 +100,36 @@ export class AuthRepository {
 export class AuthService {
   private repo = new AuthRepository();
 
-  async register(dto: RegisterDto): Promise<{ message: string }> {
+  async register(dto: RegisterDto): Promise<{ message: string; devOtp?: string; sentViaSmtp?: boolean }> {
     const existingUser = await this.repo.findUserByEmail(dto.email);
     if (existingUser) {
-      throw new ConflictError('Email already registered');
+      if (existingUser.isVerified) {
+        throw new ConflictError('This email is already registered and verified. Please log in.');
+      }
+
+      // Account was previously created but never verified: update credentials and send fresh OTP
+      const passwordHash = await bcrypt.hash(dto.password, config.BCRYPT_ROUNDS);
+      await this.repo.updateUser(existingUser.id, {
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+      });
+
+      const otp = generateOTP(config.OTP_LENGTH);
+      const otpHash = await bcrypt.hash(otp, config.BCRYPT_ROUNDS);
+      const expiresAt = new Date(Date.now() + config.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+      await this.repo.createOtpCode(existingUser.id, otpHash, 'REGISTER', expiresAt);
+      const emailResult = await sendVerificationEmail(dto.email, otp, dto.firstName);
+
+      return {
+        message: emailResult.sentViaSmtp
+          ? 'Verification code sent to your email. Please check your inbox (and spam folder).'
+          : 'A fresh verification code has been generated.',
+        ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
+        sentViaSmtp: emailResult.sentViaSmtp,
+      };
     }
 
     const passwordHash = await bcrypt.hash(dto.password, config.BCRYPT_ROUNDS);
@@ -122,10 +150,16 @@ export class AuthService {
 
     await this.repo.createOtpCode(user.id, otpHash, 'REGISTER', expiresAt);
 
-    // TODO: Send OTP via email/SMS
-    logger.info(`Registration OTP for ${dto.email}: ${otp}`);
+    // Send branded verification email via SMTP (or fallback logger)
+    const emailResult = await sendVerificationEmail(dto.email, otp, dto.firstName);
 
-    return { message: 'Registration successful. Please verify your email with the OTP sent.' };
+    return {
+      message: emailResult.sentViaSmtp
+        ? 'Verification code sent to your email. Please check your inbox (and spam folder).'
+        : 'Registration successful. Please verify your email with the OTP sent.',
+      ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
+      sentViaSmtp: emailResult.sentViaSmtp,
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<any> {
@@ -174,7 +208,12 @@ export class AuthService {
     }
 
     if (!user.isVerified) {
-      throw new ValidationError('Please verify your email first');
+      const otp = generateOTP(config.OTP_LENGTH);
+      const otpHash = await bcrypt.hash(otp, config.BCRYPT_ROUNDS);
+      const expiresAt = new Date(Date.now() + config.OTP_EXPIRY_MINUTES * 60 * 1000);
+      await this.repo.createOtpCode(user.id, otpHash, 'REGISTER', expiresAt);
+      await sendVerificationEmail(user.email, otp, user.firstName);
+      throw new ValidationError('Please verify your email first. A fresh 6-digit verification code has been dispatched to your email.');
     }
 
     await this.repo.createAuditLog(user.id, 'LOGIN_SUCCESS', 'User', user.id);
@@ -271,6 +310,107 @@ export class AuthService {
 
     return { accessToken, refreshToken };
   }
+
+  async resendOtp(email: string): Promise<{ message: string; devOtp?: string; sentViaSmtp: boolean }> {
+    const user = await this.repo.findUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+    if (user.isVerified) {
+      throw new ValidationError('Account is already verified');
+    }
+
+    const otp = generateOTP(config.OTP_LENGTH);
+    const otpHash = await bcrypt.hash(otp, config.BCRYPT_ROUNDS);
+    const expiresAt = new Date(Date.now() + config.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.repo.createOtpCode(user.id, otpHash, 'REGISTER', expiresAt);
+    const emailResult = await sendVerificationEmail(user.email, otp, user.firstName);
+
+    return {
+      message: emailResult.sentViaSmtp
+        ? 'A fresh verification code has been dispatched to your email inbox.'
+        : 'A fresh verification code has been generated.',
+      ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
+      sentViaSmtp: emailResult.sentViaSmtp,
+    };
+  }
+
+  async googleLogin(credential: string, role?: string): Promise<TokenPair & { user: any }> {
+    let payload: any;
+    try {
+      const client = new OAuth2Client(config.GOOGLE_CLIENT_ID);
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: config.GOOGLE_CLIENT_ID || undefined,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      // Fallback verification via Google's tokeninfo endpoint
+      try {
+        const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+        if (!res.ok) throw new Error('Token verification failed');
+        payload = await res.json();
+      } catch {
+        throw new ValidationError('Invalid or expired Google credential token');
+      }
+    }
+
+    if (!payload || !payload.email) {
+      throw new ValidationError('Could not extract email address from Google token');
+    }
+
+    const email = String(payload.email).toLowerCase();
+    const firstName = payload.given_name || payload.name?.split(' ')[0] || 'Google';
+    const lastName = payload.family_name || payload.name?.split(' ').slice(1).join(' ') || 'User';
+    const avatarUrl = payload.picture || null;
+
+    let user = await this.repo.findUserByEmail(email);
+    if (user) {
+      if (!user.isVerified || (!user.avatarUrl && avatarUrl)) {
+        user = await this.repo.updateUser(user.id, {
+          isVerified: true,
+          ...(avatarUrl && !user.avatarUrl ? { avatarUrl } : {}),
+        });
+      }
+    } else {
+      const randomPassword = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const passwordHash = await bcrypt.hash(randomPassword, config.BCRYPT_ROUNDS);
+      const userRole = role === 'SELLER' ? UserRole.SELLER : UserRole.CUSTOMER;
+      user = await this.repo.createUser({
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role: userRole,
+      });
+      user = await this.repo.updateUser(user.id, {
+        isVerified: true,
+        avatarUrl,
+      });
+    }
+
+    if (!user.isActive) {
+      throw new ValidationError('Account is deactivated');
+    }
+
+    await this.repo.createAuditLog(user.id, 'GOOGLE_LOGIN_SUCCESS', 'User', user.id);
+    const tokens = await this.generateTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        isVerified: user.isVerified,
+      },
+    };
+  }
 }
 
 export class AuthController {
@@ -288,6 +428,20 @@ export class AuthController {
 
   login = async (req: any, res: any) => {
     const result = await this.service.login(req.body);
+    res.json(result);
+  };
+
+  googleLogin = async (req: any, res: any) => {
+    const { credential, role } = req.body;
+    if (!credential) throw new ValidationError('Google credential token is required');
+    const result = await this.service.googleLogin(credential, role);
+    res.json(result);
+  };
+
+  resendOtp = async (req: any, res: any) => {
+    const { email } = req.body;
+    if (!email) throw new ValidationError('Email is required');
+    const result = await this.service.resendOtp(email);
     res.json(result);
   };
 
