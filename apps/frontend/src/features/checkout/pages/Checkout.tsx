@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag } from 'lucide-react'
+import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag, Banknote, QrCode, Copy, CheckCircle, Clock } from 'lucide-react'
 import { useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { clearCart } from '../../cart/cartSlice'
@@ -19,7 +19,7 @@ const checkoutSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2),
   postalCode: z.string().length(6, 'Enter valid 6-digit PIN'),
-  paymentMethod: z.enum(['RAZORPAY', 'UPI', 'WALLET']),
+  paymentMethod: z.enum(['RAZORPAY', 'UPI', 'WALLET', 'COD']),
   saveAddress: z.boolean().optional(),
 })
 
@@ -49,12 +49,14 @@ const paymentMethods = [
   { id: 'UPI', label: 'UPI', desc: 'Pay with UPI apps via Razorpay', icon: Smartphone },
   { id: 'RAZORPAY', label: 'Cards & Netbanking', desc: 'Pay by card, netbanking or supported wallets', icon: CreditCard },
   { id: 'WALLET', label: 'TRADENEST Wallet', desc: 'Use your wallet balance', icon: Wallet },
+  { id: 'COD', label: 'Cash on Delivery (COD)', desc: 'Pay with cash upon doorstep delivery', icon: Banknote },
 ]
 
 const statusConfig = {
   RAZORPAY: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   UPI: { color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
   WALLET: { color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  COD: { color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
 }
 
 export default function Checkout() {
@@ -82,6 +84,10 @@ export default function Checkout() {
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(
     initialCouponCode && initialDiscount ? { code: initialCouponCode, discount: initialDiscount } : null
   )
+  const [upiId, setUpiId] = useState('customer@okaxis')
+  const [activeUpiTab, setActiveUpiTab] = useState<'QR' | 'VPA'>('QR')
+  const [qrDisplayMode, setQrDisplayMode] = useState<'ORIGINAL' | 'DYNAMIC'>('ORIGINAL')
+  const [isVerifyingUpi, setIsVerifyingUpi] = useState(false)
 
   const items = cart?.items || []
   const subtotal = Number(cart?.subtotal || 0)
@@ -139,39 +145,27 @@ export default function Checkout() {
     }
 
     return new Promise<RazorpayPaymentResponse>((resolve, reject) => {
-      const options = {
+      const options: any = {
         key: razorpayKeyId,
-        amount: amount * 100, // Razorpay expects amount in paise
+        amount: Math.round(amount * 100), // Razorpay expects amount in paise
         currency: 'INR',
         name: 'TRADENEST',
-        description: 'Order Payment',
+        description: `Order Payment #${orderId.slice(0, 8)}`,
         order_id: razorpayOrderId,
-        method: paymentMethod === 'UPI' ? { upi: true } : undefined,
-        config: {
-          display: {
-            blocks: {
-              upi: {
-                name: 'Pay using UPI',
-                instruments: [{ method: 'upi' as const }],
-              },
-            },
-            sequence: ['block.upi'],
-            preferences: { show_default_blocks: true },
-          },
-        },
         handler: (response: RazorpayPaymentResponse) => {
           resolve(response)
         },
         prefill: {
-          name: user?.firstName + ' ' + user?.lastName,
-          email: user?.email,
-          contact: watch('phone') || '',
+          name: ((user?.firstName || '') + ' ' + (user?.lastName || '')).trim(),
+          email: user?.email || '',
+          contact: watch('phone') || user?.phone || '',
+          method: paymentMethod === 'UPI' ? 'upi' : undefined,
         },
         notes: {
           orderId: orderId,
         },
         theme: {
-          color: '#3b82f6',
+          color: paymentMethod === 'UPI' ? '#10b981' : '#3b82f6',
         },
         modal: {
           ondismiss: () => {
@@ -181,8 +175,8 @@ export default function Checkout() {
       }
 
       const rzp = new window.Razorpay(options)
-      rzp.on('payment.failed', (response) => {
-        reject(new Error(response.error?.description || 'Payment failed'))
+      rzp.on('payment.failed', (response: any) => {
+        reject(new Error(response?.error?.description || 'Payment failed'))
       })
       rzp.open()
     })
@@ -196,6 +190,97 @@ export default function Checkout() {
       providerRef: paymentId,
     }).unwrap()
     return result
+  }
+
+  const handleVerifyDirectUpi = async () => {
+    if (!paymentData?.paymentId || !paymentData?.orderId) {
+      toast.error('Payment session not found. Please try again.')
+      return
+    }
+    setIsVerifyingUpi(true)
+    setError(null)
+    try {
+      const userVpa = (upiId || 'customer@okhdfcbank').trim()
+      const verifyResult = await verifyPayment({
+        paymentId: paymentData.paymentId,
+        provider: 'UPI',
+        providerRef: paymentData.providerRef || `upi_${paymentData.orderId}`,
+        upiId: userVpa,
+        upiRef: `UPI-${Date.now().toString().slice(-8)}`,
+      }).unwrap()
+
+      if (verifyResult?.success) {
+        await confirmPayment({
+          orderId: paymentData.orderId,
+          paymentId: paymentData.paymentId,
+          providerRef: paymentData.providerRef || `upi_${paymentData.orderId}`,
+          provider: 'UPI',
+        }).unwrap()
+
+        await dispatch(clearCart())
+        setStep(4)
+        toast.success('UPI Payment verified successfully!')
+        setTimeout(() => {
+          navigate(`/orders/${paymentData.orderId}`)
+        }, 2000)
+      } else {
+        throw new Error('Payment verification failed')
+      }
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'UPI verification failed. Please try again.')
+      setError(msg)
+      toast.error(msg)
+    } finally {
+      setIsVerifyingUpi(false)
+    }
+  }
+
+  const handleGatewayUpi = async () => {
+    if (!paymentData?.orderId || !paymentData?.razorpayOrderId || !paymentData?.razorpayKeyId) {
+      toast.error('Razorpay session not available. Please retry.')
+      return
+    }
+    setIsVerifyingUpi(true)
+    setError(null)
+    try {
+      const razorpayResponse = await handleRazorpayPayment(
+        paymentData.orderId,
+        paymentData.razorpayOrderId,
+        paymentData.razorpayKeyId,
+        paymentData.amount,
+        'UPI'
+      )
+
+      const verifyResult = await verifyPayment({
+        paymentId: paymentData.paymentId,
+        provider: 'UPI',
+        providerRef: paymentData.razorpayOrderId,
+        razorpayPaymentId: razorpayResponse.razorpay_payment_id,
+        razorpaySignature: razorpayResponse.razorpay_signature,
+      }).unwrap()
+
+      if (verifyResult?.success) {
+        await confirmPayment({
+          orderId: paymentData.orderId,
+          paymentId: paymentData.paymentId,
+          providerRef: paymentData.razorpayOrderId,
+          provider: 'UPI',
+        }).unwrap()
+
+        await dispatch(clearCart())
+        setStep(4)
+        toast.success('UPI Payment confirmed via gateway!')
+        setTimeout(() => {
+          navigate(`/orders/${paymentData.orderId}`)
+        }, 2000)
+      }
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'Gateway UPI payment failed or was cancelled')
+      setError(msg)
+      toast.error(msg)
+    } finally {
+      setIsVerifyingUpi(false)
+    }
   }
 
   const onSubmit = async (data: CheckoutForm) => {
@@ -234,17 +319,23 @@ export default function Checkout() {
         order,
       })
 
-      // Step 3: Process payment based on method
+      // If user chose UPI: Transition directly to Step 3 interactive payment screen
+      if (data.paymentMethod === 'UPI') {
+        setStep(3)
+        return
+      }
+
+      // Step 3: Process other payment methods
       let verificationResult
 
-      if (data.paymentMethod === 'RAZORPAY' || data.paymentMethod === 'UPI') {
+      if (data.paymentMethod === 'RAZORPAY') {
         if (
           !paymentResult.razorpayOrderId ||
           !paymentResult.razorpayKeyId ||
           !Number.isFinite(paymentResult.amount) ||
           paymentResult.amount <= 0
         ) {
-          throw new Error('Razorpay could not create a checkout session. Please try again.')
+          throw new Error('Razorpay could not create a payment session. Please try again.')
         }
 
         setStep(3)
@@ -254,20 +345,18 @@ export default function Checkout() {
             paymentResult.razorpayOrderId,
             paymentResult.razorpayKeyId,
             paymentResult.amount,
-            data.paymentMethod
+            'RAZORPAY'
           )
           
-          // Verify payment on backend
           verificationResult = await verifyPayment({
             paymentId: paymentResult.paymentId,
-            provider: data.paymentMethod,
+            provider: 'RAZORPAY',
             providerRef: paymentResult.razorpayOrderId,
             razorpayPaymentId: razorpayResponse.razorpay_payment_id,
             razorpaySignature: razorpayResponse.razorpay_signature,
           }).unwrap()
         } catch (err: unknown) {
-          // Payment cancelled or failed
-          throw new Error(getErrorMessage(err, 'Razorpay payment failed'))
+          throw new Error(getErrorMessage(err, 'Card payment was cancelled or failed'))
         }
       } else if (data.paymentMethod === 'WALLET') {
         setStep(3)
@@ -276,6 +365,17 @@ export default function Checkout() {
         } catch (err: unknown) {
           throw new Error(getErrorMessage(err, 'Wallet payment failed'))
         }
+      } else if (data.paymentMethod === 'COD') {
+        setStep(3)
+        try {
+          verificationResult = await verifyPayment({
+            paymentId: paymentResult.paymentId,
+            provider: 'COD',
+            providerRef: paymentResult.providerRef || `cod_${orderId}`,
+          }).unwrap()
+        } catch (err: unknown) {
+          throw new Error(getErrorMessage(err, 'Failed to process Cash on Delivery request'))
+        }
       }
 
       // Step 4: Confirm payment and update the order before clearing the cart.
@@ -283,7 +383,7 @@ export default function Checkout() {
         await confirmPayment({
           orderId,
           paymentId: paymentResult.paymentId,
-          providerRef: paymentResult.razorpayOrderId || paymentResult.paymentId,
+          providerRef: paymentResult.providerRef || paymentResult.razorpayOrderId || paymentResult.paymentId,
           provider: data.paymentMethod,
         }).unwrap()
         await dispatch(clearCart())
@@ -345,7 +445,264 @@ export default function Checkout() {
     )
   }
 
-  // Step 3: Processing
+  // Step 3: Dedicated Interactive UPI Payment Screen
+  if (step === 3 && (watchedPaymentMethod === 'UPI' || paymentData?.provider === 'UPI')) {
+    const orderTotal = paymentData?.amount || total
+    const merchantVpa = paymentData?.upiVpa || 'bhavdeepbhukan129@okhdfcbank'
+    const merchantName = (paymentData as any)?.upiMerchantName || 'Bhavdeep Bhukan'
+    const qrData = paymentData?.upiIntent || `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&aid=uGICAgMCjr6boHA&am=${orderTotal.toFixed(2)}&cu=INR&tr=${paymentData?.orderId || ''}&tn=Order%20Payment`
+
+    return (
+      <div className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-6 text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <Smartphone className="h-3.5 w-3.5" />
+              Step 3: Complete UPI Payment
+            </span>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-50">
+              Pay ₹{orderTotal.toLocaleString()}
+            </h1>
+            <p className="mt-1 text-sm text-secondary-500">
+              Order ID: <span className="font-mono font-medium text-secondary-700 dark:text-secondary-300">#{paymentData?.orderId?.slice(0, 8)}</span>
+            </p>
+          </div>
+
+          <div className="card p-6 sm:p-8 space-y-6 bg-white dark:bg-secondary-900 shadow-xl border border-secondary-200 dark:border-secondary-800 rounded-2xl">
+            {/* Payee Details Card */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                  B
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-secondary-900 dark:text-secondary-100 text-sm sm:text-base">
+                      {merchantName}
+                    </span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100">
+                      ✓ Verified Payee
+                    </span>
+                  </div>
+                  <div className="text-xs text-secondary-600 dark:text-secondary-400 font-mono mt-0.5">
+                    {merchantVpa}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(merchantVpa)
+                  toast.success('UPI ID copied to clipboard!')
+                }}
+                className="btn btn-sm btn-outline text-xs flex items-center gap-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                title="Copy UPI ID"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Copy</span>
+              </button>
+            </div>
+
+            {/* Tabs for QR Code and UPI ID */}
+            <div className="flex rounded-xl bg-secondary-100 p-1 dark:bg-secondary-800">
+              <button
+                type="button"
+                onClick={() => setActiveUpiTab('QR')}
+                className={clsx(
+                  'flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2',
+                  activeUpiTab === 'QR'
+                    ? 'bg-white text-emerald-700 shadow-sm dark:bg-secondary-900 dark:text-emerald-400'
+                    : 'text-secondary-600 hover:text-secondary-900 dark:text-secondary-400'
+                )}
+              >
+                <QrCode className="h-4 w-4" />
+                <span>Scan QR Code</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveUpiTab('VPA')}
+                className={clsx(
+                  'flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2',
+                  activeUpiTab === 'VPA'
+                    ? 'bg-white text-emerald-700 shadow-sm dark:bg-secondary-900 dark:text-emerald-400'
+                    : 'text-secondary-600 hover:text-secondary-900 dark:text-secondary-400'
+                )}
+              >
+                <Smartphone className="h-4 w-4" />
+                <span>Enter UPI ID / VPA</span>
+              </button>
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* TAB 1: QR CODE */}
+            {activeUpiTab === 'QR' && (
+              <div className="flex flex-col items-center text-center space-y-4">
+                {/* QR Display Mode Toggle */}
+                <div className="inline-flex rounded-lg bg-secondary-100 p-1 dark:bg-secondary-800 text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setQrDisplayMode('ORIGINAL')}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-md transition-all',
+                      qrDisplayMode === 'ORIGINAL'
+                        ? 'bg-white text-secondary-900 shadow-xs font-semibold dark:bg-secondary-700 dark:text-secondary-100'
+                        : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
+                    )}
+                  >
+                    Original GPay QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQrDisplayMode('DYNAMIC')}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-md transition-all',
+                      qrDisplayMode === 'DYNAMIC'
+                        ? 'bg-white text-secondary-900 shadow-xs font-semibold dark:bg-secondary-700 dark:text-secondary-100'
+                        : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
+                    )}
+                  >
+                    Dynamic QR (₹{orderTotal} Auto-filled)
+                  </button>
+                </div>
+
+                {qrDisplayMode === 'ORIGINAL' ? (
+                  <div className="p-2 bg-white rounded-2xl border-2 border-emerald-500 shadow-md max-w-[280px]">
+                    <img
+                      src="/upi-qr.jpg"
+                      alt="Bhavdeep Bhukan Google Pay QR"
+                      className="w-full object-contain rounded-lg"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white rounded-2xl border-2 border-emerald-500 shadow-md">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`}
+                      alt="Dynamic UPI Payment QR Code"
+                      className="h-48 w-48 rounded-lg"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <p className="font-semibold text-secondary-900 dark:text-secondary-50 text-base">
+                    Scan with any UPI App on Mobile
+                  </p>
+                  <p className="text-xs text-secondary-500 mt-0.5">
+                    Google Pay • PhonePe • Paytm • BHIM • Cred • Any Bank UPI
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyDirectUpi}
+                  disabled={isVerifyingUpi}
+                  className="btn btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 shadow-md font-semibold text-white"
+                >
+                  {isVerifyingUpi ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle className="h-5 w-5" />}
+                  <span>{isVerifyingUpi ? 'Verifying Payment...' : 'I Have Paid • Verify & Complete Order'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* TAB 2: UPI ID (VPA) */}
+            {activeUpiTab === 'VPA' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-secondary-700 dark:text-secondary-300 mb-1.5">
+                    Popular UPI Handles
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { name: 'Google Pay', handle: '@okhdfcbank' },
+                      { name: 'Google Pay (Axis)', handle: '@okaxis' },
+                      { name: 'PhonePe', handle: '@ybl' },
+                      { name: 'Paytm', handle: '@paytm' },
+                    ].map((app) => (
+                      <button
+                        key={app.name}
+                        type="button"
+                        onClick={() => {
+                          const prefix = upiId.includes('@') ? upiId.split('@')[0] : upiId || 'customer'
+                          setUpiId(prefix + app.handle)
+                        }}
+                        className="p-2 text-xs rounded-lg border border-secondary-200 dark:border-secondary-700 hover:border-emerald-500 bg-white dark:bg-secondary-800 text-left transition-colors"
+                      >
+                        <span className="block font-semibold text-secondary-900 dark:text-secondary-100">{app.name}</span>
+                        <span className="text-[11px] text-secondary-500">{app.handle}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-secondary-700 dark:text-secondary-300 mb-1">
+                    Enter Your UPI ID (VPA)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      placeholder="e.g. mobile@paytm or yourname@okhdfcbank"
+                      className="input text-base w-full pr-28 font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setUpiId('bhavdeepbhukan129@okhdfcbank')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded dark:bg-emerald-800 dark:text-emerald-200"
+                    >
+                      Fill My VPA
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-secondary-500">
+                    Enter your virtual payment address or click Fill My VPA for testing.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyDirectUpi}
+                  disabled={isVerifyingUpi}
+                  className="btn btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 shadow-md font-semibold text-white"
+                >
+                  {isVerifyingUpi ? <Loader2 className="h-5 w-5 animate-spin" /> : <Smartphone className="h-5 w-5" />}
+                  <span>{isVerifyingUpi ? 'Verifying UPI Payment...' : `Verify & Pay ₹${orderTotal.toLocaleString()}`}</span>
+                </button>
+              </div>
+            )}
+
+            {/* Alternative: Gateway Popup */}
+            <div className="pt-2 border-t border-secondary-200 dark:border-secondary-700 text-center space-y-3">
+              <button
+                type="button"
+                onClick={handleGatewayUpi}
+                disabled={isVerifyingUpi}
+                className="btn btn-outline w-full py-2.5 text-xs text-secondary-700 dark:text-secondary-300"
+              >
+                Launch Razorpay Gateway Popup
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="text-xs text-secondary-500 hover:text-red-500 underline"
+              >
+                Cancel & Change Payment Method
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 3: Generic Processing for other methods
   if (step === 3) {
     return (
       <div className="px-4 py-16">
@@ -540,6 +897,59 @@ export default function Checkout() {
                   </div>
                 </div>
               )}
+
+              {watchedPaymentMethod === 'UPI' && (
+                <div className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/20 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                    <Smartphone className="h-5 w-5 text-emerald-600" />
+                    <span>Pay via UPI Gateway (GPay, PhonePe, Paytm, QR)</span>
+                  </div>
+
+                  <p className="text-xs text-secondary-600 dark:text-secondary-300">
+                    Clicking &ldquo;Pay with UPI&rdquo; will open the secure Razorpay payment window to scan a QR code or pay using Google Pay, PhonePe, Paytm, or BHIM.
+                  </p>
+
+                  <div>
+                    <label className="block text-xs font-medium text-secondary-700 dark:text-secondary-300 mb-1">
+                      UPI ID / VPA (Optional pre-fill)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={upiId}
+                        onChange={(e) => setUpiId(e.target.value)}
+                        placeholder="e.g. yourname@okhdfcbank or 9876543210@paytm"
+                        className="input text-sm w-full pr-28"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setUpiId('success@razorpay')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded dark:bg-emerald-800 dark:text-emerald-200"
+                        title="Auto-fill verified test UPI ID"
+                      >
+                        Test UPI ID
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-secondary-500">
+                    <span className="font-medium text-secondary-700 dark:text-secondary-300">Apps:</span>
+                    <span className="rounded bg-white px-2 py-0.5 border border-secondary-200 dark:bg-secondary-800 dark:border-secondary-700">Google Pay</span>
+                    <span className="rounded bg-white px-2 py-0.5 border border-secondary-200 dark:bg-secondary-800 dark:border-secondary-700">PhonePe</span>
+                    <span className="rounded bg-white px-2 py-0.5 border border-secondary-200 dark:bg-secondary-800 dark:border-secondary-700">Paytm</span>
+                    <span className="rounded bg-white px-2 py-0.5 border border-secondary-200 dark:bg-secondary-800 dark:border-secondary-700">BHIM QR</span>
+                  </div>
+                </div>
+              )}
+
+              {watchedPaymentMethod === 'COD' && (
+                <div className="mt-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800">
+                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+                    <Banknote className="h-5 w-5 text-emerald-600" />
+                    <span>Cash on Delivery selected. Please keep exact cash of ₹{total.toLocaleString()} ready for the courier.</span>
+                  </div>
+                </div>
+              )}
             </motion.section>
           </div>
 
@@ -641,7 +1051,7 @@ export default function Checkout() {
                 disabled={processing || (watchedPaymentMethod === 'WALLET' && wallet && wallet.balance < total)}
                 className="btn btn-primary w-full py-3 text-lg"
               >
-                {processing ? 'Processing...' : `Pay ₹${total.toLocaleString()}`}
+                {processing ? 'Placing Order...' : watchedPaymentMethod === 'COD' ? `Place Cash on Delivery Order - ₹${total.toLocaleString()}` : watchedPaymentMethod === 'UPI' ? `Proceed to UPI Payment (QR / VPA) - ₹${total.toLocaleString()}` : `Pay ₹${total.toLocaleString()}`}
               </button>
 
               <div className="mt-4 flex items-center justify-center gap-2 text-xs text-secondary-500">
@@ -649,6 +1059,10 @@ export default function Checkout() {
                 <span>
                   {watchedPaymentMethod === 'WALLET'
                     ? 'Paid securely with TRADENEST Wallet'
+                    : watchedPaymentMethod === 'COD'
+                    ? 'Pay with cash upon doorstep delivery'
+                    : watchedPaymentMethod === 'UPI'
+                    ? 'Instant UPI Payment with GPay, PhonePe, Paytm or BHIM'
                     : 'Secured by Razorpay Checkout'}
                 </span>
               </div>

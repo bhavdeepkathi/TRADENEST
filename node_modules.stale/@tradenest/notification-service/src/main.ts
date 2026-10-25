@@ -26,7 +26,13 @@ async function bootstrap() {
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
   app.use(cors({ origin: config.CORS_ORIGIN, credentials: true }));
-  const limiter = rateLimit({ windowMs: config.RATE_LIMIT_WINDOW_MS, max: config.RATE_LIMIT_MAX_REQUESTS, message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' } });
+  const limiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 2000,
+    keyGenerator: (req) => (req.headers['x-user-id'] as string) || req.ip || 'anonymous',
+    message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
+    validate: { xForwardedForHeader: false },
+  });
   app.use('/api/', limiter);
   app.use(express.json({ limit: '10mb' }));
   if (config.NODE_ENV !== 'test') app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));

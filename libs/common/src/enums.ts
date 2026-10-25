@@ -27,6 +27,7 @@ export enum PaymentProvider {
   STRIPE = 'STRIPE',
   UPI = 'UPI',
   WALLET = 'WALLET',
+  COD = 'COD',
 }
 
 export enum CouponType {

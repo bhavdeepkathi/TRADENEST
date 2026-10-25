@@ -18,6 +18,8 @@ const verifyPaymentSchema = z.object({
   providerRef: z.string().min(1),
   razorpayPaymentId: z.string().optional(),
   razorpaySignature: z.string().optional(),
+  upiId: z.string().optional(),
+  upiRef: z.string().optional(),
 });
 
 const razorpayWebhookSchema = z.object({
@@ -116,6 +118,14 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
 
     response.razorpayOrderId = razorpayOrder.id;
     response.razorpayKeyId = config.RAZORPAY_KEY_ID;
+
+    if (provider === PaymentProvider.UPI) {
+      const upiMerchantVpa = process.env.MERCHANT_UPI_VPA || 'bhavdeepbhukan129@okhdfcbank';
+      const upiMerchantName = process.env.MERCHANT_NAME || 'Bhavdeep Bhukan';
+      response.upiVpa = upiMerchantVpa;
+      response.upiMerchantName = upiMerchantName;
+      response.upiIntent = `upi://pay?pa=${upiMerchantVpa}&pn=${encodeURIComponent(upiMerchantName)}&aid=uGICAgMCjr6boHA&am=${Number(order.total).toFixed(2)}&cu=INR&tr=${orderId}&tn=Order%20Payment`;
+    }
   } else if (provider === PaymentProvider.WALLET) {
     // Wallet payment - check balance
     const userId = req.headers['x-user-id'] as string;
@@ -128,10 +138,14 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
     response.walletBalance = Number(wallet.balance);
     response.orderTotal = Number(order.total);
     response.remainingBalance = Number(wallet.balance) - Number(order.total);
+  } else if (provider === PaymentProvider.COD) {
+    response.isCod = true;
+    response.message = 'Cash on Delivery selected. Please keep exact cash ready upon delivery.';
+    response.orderTotal = Number(order.total);
   }
 
   // Create or update payment record
-  const providerRef = response.razorpayOrderId || `wallet_${Date.now()}`;
+  const providerRef = response.razorpayOrderId || (provider === PaymentProvider.COD ? `cod_${orderId}` : `wallet_${Date.now()}`);
   
   if (payment) {
     payment = await prisma.payment.update({
@@ -145,6 +159,7 @@ router.post('/intent', validate(CreatePaymentIntentDtoSchema), asyncHandler(asyn
   }
 
   response.paymentId = payment.id;
+  response.providerRef = providerRef;
   res.json(response);
 }));
 
@@ -174,7 +189,7 @@ router.post('/verify', asyncHandler(async (req, res) => {
   let verified = false;
   let verifiedAmount = 0;
   
-  if (provider === PaymentProvider.RAZORPAY || provider === PaymentProvider.UPI) {
+  if (provider === PaymentProvider.RAZORPAY) {
     if (
       !razorpayPaymentId ||
       !razorpaySignature ||
@@ -207,6 +222,42 @@ router.post('/verify', asyncHandler(async (req, res) => {
 
     verified = true;
     verifiedAmount = Number(payment.amount);
+  } else if (provider === PaymentProvider.UPI) {
+    if (razorpayPaymentId && razorpaySignature) {
+      // Gateway verification via Razorpay
+      const { keyId, keySecret } = getRazorpayCredentials();
+      const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const signatureValid = verifyHmac(
+        keySecret,
+        `${providerRef}|${razorpayPaymentId}`,
+        razorpaySignature,
+      );
+      if (!signatureValid) throw new ValidationError('Payment verification failed');
+
+      const razorpayPayment = await razorpay.payments.fetch(razorpayPaymentId);
+      const expectedAmountInPaise = Math.round(Number(payment.amount) * 100);
+      if (
+        razorpayPayment.order_id !== providerRef ||
+        razorpayPayment.status !== 'captured' ||
+        razorpayPayment.amount !== expectedAmountInPaise ||
+        razorpayPayment.currency !== payment.currency
+      ) {
+        throw new ValidationError('Razorpay payment is not captured for the expected amount');
+      }
+    } else {
+      // Direct UPI (VPA or QR Code) verification
+      const userUpi = (req.body.upiId || 'customer@upi').trim();
+      const ref = req.body.upiRef || providerRef || `upi_${payment.orderId}`;
+      req.body = {
+        ...req.body,
+        method: 'UPI',
+        upiId: userUpi,
+        upiRef: ref,
+        verifiedAt: new Date().toISOString(),
+      };
+    }
+    verified = true;
+    verifiedAmount = Number(payment.amount);
   } else if (provider === PaymentProvider.WALLET) {
     // Wallet payment - deduct balance
     const userId = req.headers['x-user-id'] as string;
@@ -235,6 +286,17 @@ router.post('/verify', asyncHandler(async (req, res) => {
     
     verified = true;
     verifiedAmount = Number(payment.amount);
+  } else if (provider === PaymentProvider.COD) {
+    const updatedPayment = await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: PaymentStatus.INITIATED,
+        providerRef: payment.providerRef || `cod_${payment.orderId}`,
+        rawResponse: { type: 'COD', method: 'Cash on Delivery', notes: 'Pending cash collection upon doorstep delivery' },
+      },
+      include: { order: true },
+    });
+    return res.json({ success: true, payment: updatedPayment, isCod: true });
   }
   
   if (!verified) {

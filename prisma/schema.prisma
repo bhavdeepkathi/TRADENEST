@@ -46,6 +46,7 @@ enum PaymentProvider {
   STRIPE
   UPI
   WALLET
+  COD
 }
 
 enum CouponType {

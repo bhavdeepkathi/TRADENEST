@@ -83,7 +83,7 @@ export default function Layout() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
   const { data: unreadData } = useGetUnreadNotificationCountQuery(undefined, {
     skip: !isAuthenticated,
-    pollingInterval: 20000,
+    pollingInterval: 5000,
   })
 
   const handleLogout = () => {
@@ -381,29 +381,25 @@ export default function Layout() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
               <p className="text-sm text-secondary-500 dark:text-secondary-400">
-                © {new Date().getFullYear()} TRADENEST Technologies Pvt. Ltd. All rights reserved.
+                © {new Date().getFullYear()} TRADENEST. All rights reserved.
               </p>
 
               <div className="flex items-center gap-6 text-sm text-secondary-500 dark:text-secondary-400">
                 <span>Made with ❤️ in India</span>
-                <span className="hidden sm:inline">|</span>
-                <span>CIN: U72900KA2023PTC123456</span>
-                <span className="hidden sm:inline">|</span>
-                <span>GSTIN: 29AAACT1234A1Z5</span>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
+                  <span className="bg-slate-700 text-white px-2 py-1">UPI</span>
+                  <span className="bg-emerald-600 text-white px-2 py-1">Accepted</span>
+                </span>
                 <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
                   <span className="bg-slate-700 text-white px-2 py-1">Razorpay</span>
                   <span className="bg-blue-600 text-white px-2 py-1">Secured</span>
                 </span>
                 <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
-                  <span className="bg-slate-700 text-white px-2 py-1">Stripe</span>
-                  <span className="bg-[#635BFF] text-white px-2 py-1">Certified</span>
-                </span>
-                <span className="inline-flex items-center rounded-sm overflow-hidden text-[11px] font-medium leading-none">
-                  <span className="bg-slate-700 text-white px-2 py-1">ISO 27001</span>
-                  <span className="bg-emerald-600 text-white px-2 py-1">Certified</span>
+                  <span className="bg-slate-700 text-white px-2 py-1">SSL</span>
+                  <span className="bg-emerald-600 text-white px-2 py-1">256-Bit</span>
                 </span>
               </div>
             </div>

@@ -17,7 +17,7 @@ import {
   Bell,
   HelpCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import NotificationDrawer from './NotificationDrawer'
@@ -38,8 +38,39 @@ export default function SellerLayout() {
   const { user } = useAppSelector((s) => s.auth)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [notificationOpen, setNotificationOpen] = useState(false)
-  const { data: unreadData } = useGetUnreadNotificationCountQuery(undefined, { pollingInterval: 20000 })
+    const [notificationOpen, setNotificationOpen] = useState(false)
+  const { data: unreadData } = useGetUnreadNotificationCountQuery(undefined, { pollingInterval: 5000 })
+  const prevCountRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (unreadData?.count != null) {
+      if (prevCountRef.current !== null && unreadData.count > prevCountRef.current) {
+        toast((t) => (
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔔</span>
+            <div className="text-left">
+              <div className="font-bold text-sm text-secondary-900 dark:text-secondary-100">
+                New Order Received!
+              </div>
+              <div className="text-xs text-secondary-500">
+                You have a new customer order awaiting review and approval.
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                toast.dismiss(t.id)
+                setNotificationOpen(true)
+              }}
+              className="ml-auto btn btn-xs btn-primary text-xs"
+            >
+              View
+            </button>
+          </div>
+        ), { duration: 8000, position: 'top-right' })
+      }
+      prevCountRef.current = unreadData.count
+    }
+  }, [unreadData?.count])
 
   const handleLogout = () => {
     dispatch(logout())
@@ -201,8 +232,11 @@ export default function SellerLayout() {
               >
                 <Bell className="h-5 w-5" />
                 {(unreadData?.count ?? 0) > 0 && (
-                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
-                    {unreadData!.count > 9 ? '9+' : unreadData!.count}
+                  <span className="absolute top-1 right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[10px] font-bold text-white items-center justify-center shadow-xs">
+                      {unreadData!.count > 9 ? '9+' : unreadData!.count}
+                    </span>
                   </span>
                 )}
               </button>

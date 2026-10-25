@@ -44,7 +44,8 @@ export function generateInvoicePdf(order: any, invoice: InvoiceData): Promise<Bu
       doc.font('Helvetica-Bold').text('Order Date:', 260, y + 10);
       doc.font('Helvetica').text(new Date(order.createdAt).toLocaleDateString('en-IN'), 320, y + 10);
       doc.font('Helvetica-Bold').text('Payment:', 430, y + 10);
-      doc.font('Helvetica').text(order.payment?.provider ? `${order.payment.provider} (${order.payment.status})` : 'PAID', 480, y + 10);
+      const payText = order.payment?.provider === 'COD' ? (order.payment.status === 'SUCCESS' ? 'COD (Paid)' : 'COD (Due on Delivery)') : (order.payment?.provider ? `${order.payment.provider} (${order.payment.status})` : 'PAID');
+      doc.font('Helvetica').text(payText, 480, y + 10);
 
       // Shipping & Billing Details
       y = 140;

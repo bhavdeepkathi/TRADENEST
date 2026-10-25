@@ -45,7 +45,8 @@ export default function SellerOrders() {
   const { user } = useAppSelector((s) => s.auth)
   const location = useLocation()
   const navigate = useNavigate()
-  const [search, setSearch] = useState('')
+  const queryParams = new URLSearchParams(location.search);
+  const [search, setSearch] = useState(queryParams.get('search') || '')
   const [statusFilter, setStatusFilter] = useState('All')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const [page, setPage] = useState(1)
@@ -90,6 +91,12 @@ export default function SellerOrders() {
       toast.error(err?.data?.message || 'Failed to process return request')
     }
   }
+
+  // Sync search from URL query
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('search');
+    if (q) setSearch(q);
+  }, [location.search]);
 
   // Auto-refetch when returning to seller orders page
   useEffect(() => {
@@ -189,6 +196,33 @@ export default function SellerOrders() {
         <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Orders</h1>
         <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage and track all your customer orders.</p>
       </div>
+
+      {/* Pending Orders Banner */}
+      {orders.filter((o) => o.status === 'PENDING').length > 0 && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex h-3 w-3 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            </span>
+            <div>
+              <p className="font-semibold text-sm">
+                🔔 You have {orders.filter((o) => o.status === 'PENDING').length} order(s) awaiting your approval!
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Click "Approve Order" below to confirm and prepare the items for shipping.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('PENDING')}
+            className="btn btn-sm bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0"
+          >
+            Filter Pending ({orders.filter((o) => o.status === 'PENDING').length})
+          </button>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="card p-4 sm:p-6">
@@ -323,9 +357,20 @@ export default function SellerOrders() {
                     <td className="p-4 text-sm font-medium text-secondary-900 dark:text-secondary-50">₹{Number(order.total || 0).toLocaleString('en-IN')}</td>
                     <td className="p-4">
                       {order.payment && (
-                        <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', paymentStyles[order.payment.status])}>
-                          {order.payment.status === 'SUCCESS' ? 'Paid' : order.payment.status === 'INITIATED' ? 'Pending' : order.payment.status}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', 
+                            order.payment.provider === 'COD' && order.payment.status === 'INITIATED'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : paymentStyles[order.payment.status]
+                          )}>
+                            {order.payment.provider === 'COD'
+                              ? (order.payment.status === 'SUCCESS' ? 'Cash Collected' : 'Cash on Delivery')
+                              : (order.payment.status === 'SUCCESS' ? 'Paid' : order.payment.status === 'INITIATED' ? 'Pending' : order.payment.status)}
+                          </span>
+                          <span className="text-[10px] text-secondary-500 font-medium">
+                            {order.payment.provider === 'COD' ? 'Due on Delivery' : order.payment.provider}
+                          </span>
+                        </div>
                       )}
                       {!order.payment && (
                         <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300')}>
@@ -468,9 +513,20 @@ export default function SellerOrders() {
               </div>
               <div>
                 <p className="text-xs text-secondary-500">Payment</p>
-                <span className={clsx('inline-flex mt-0.5 items-center px-2 py-0.5 rounded-full text-xs font-medium', paymentStyles[selectedOrder.payment?.status] || 'bg-gray-100 text-gray-700')}>
-                  {selectedOrder.payment?.status || 'No Payment'}
-                </span>
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', 
+                    selectedOrder.payment?.provider === 'COD' && selectedOrder.payment?.status === 'INITIATED'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : (paymentStyles[selectedOrder.payment?.status] || 'bg-gray-100 text-gray-700')
+                  )}>
+                    {selectedOrder.payment?.provider === 'COD'
+                      ? (selectedOrder.payment?.status === 'SUCCESS' ? 'Cash Collected' : 'Cash on Delivery (Pending)')
+                      : (selectedOrder.payment?.status || 'No Payment')}
+                  </span>
+                  {selectedOrder.payment?.provider === 'COD' && (
+                    <span className="text-[10px] text-secondary-500">Collect cash upon delivery</span>
+                  )}
+                </div>
               </div>
               <div>
                 <p className="text-xs text-secondary-500">Total</p>

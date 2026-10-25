@@ -177,24 +177,25 @@ export async function sendPaymentConfirmedEmail(
   const shortId = order.id.slice(0, 8);
   const name = customer.firstName || 'Valued Customer';
   const total = Number(order.total || 0).toFixed(2);
-  const provider = payment?.provider || 'Online Payment';
-  const providerRef = payment?.providerRef || payment?.id || 'Completed';
+  const isCod = payment?.provider === 'COD';
+  const provider = isCod ? 'Cash on Delivery (COD)' : (payment?.provider || 'Online Payment');
+  const providerRef = isCod ? 'Cash upon delivery' : (payment?.providerRef || payment?.id || 'Completed');
 
   const body = `
-    <h2 class="title">Payment Confirmed!</h2>
+    <h2 class="title">${isCod ? 'Order Confirmed - Cash on Delivery' : 'Payment Confirmed!'}</h2>
     <p>Hi <strong>${name}</strong>,</p>
-    <p>We're pleased to confirm that your payment for order <strong>#${shortId}</strong> has been successfully processed.</p>
+    <p>${isCod ? `Your order <strong>#${shortId}</strong> is confirmed. Please keep exact cash ready upon arrival.` : `We're pleased to confirm that your payment for order <strong>#${shortId}</strong> has been successfully processed.`}</p>
 
     <div class="order-box" style="background-color: #ecfdf5; border: 1px solid #a7f3d0;">
-      <div style="color: #065f46; font-size: 16px; font-weight: 700; margin-bottom: 6px;">Payment Successful</div>
-      <strong>Amount Paid:</strong> ₹${total}<br/>
+      <div style="color: #065f46; font-size: 16px; font-weight: 700; margin-bottom: 6px;">${isCod ? 'Pay on Delivery' : 'Payment Successful'}</div>
+      <strong>${isCod ? 'Amount to Pay on Delivery:' : 'Amount Paid:'}</strong> ₹${total}<br/>
       <strong>Payment Method:</strong> ${provider}<br/>
-      <strong>Transaction Reference:</strong> ${providerRef}<br/>
+      <strong>${isCod ? 'Instructions:' : 'Transaction Reference:'}</strong> ${providerRef}<br/>
       <strong>Status:</strong> Confirmed
     </div>
 
     <p style="font-size: 14px; color: #475569;">
-      The seller has been notified of your payment. You will receive an update once the seller approves and ships your items.
+      The seller has been notified. You will receive an update once the seller approves and ships your items.
     </p>
 
     <div style="text-align: center; margin-top: 24px;">
@@ -202,10 +203,16 @@ export async function sendPaymentConfirmedEmail(
     </div>
   `;
 
-  const html = getBaseTemplate(`Payment Confirmed - #${shortId}`, body);
-  const text = `Hi ${name},\n\nPayment of ₹${total} for order #${shortId} was successful (${provider} ref: ${providerRef}).\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
+  const html = getBaseTemplate(`${isCod ? 'Order' : 'Payment'} Confirmed - #${shortId}`, body);
+  const text = isCod
+    ? `Hi ${name},\n\nYour order #${shortId} for ₹${total} is confirmed via Cash on Delivery. Please keep ₹${total} in cash ready upon delivery.\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`
+    : `Hi ${name},\n\nPayment of ₹${total} for order #${shortId} was successful (${provider} ref: ${providerRef}).\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
 
-  return sendMailSafe(customer.email, `💳 Payment Confirmed - TRADENEST Order #${shortId}`, html, text);
+  const subject = isCod 
+    ? `💵 Order Confirmed (Cash on Delivery) - TRADENEST #${shortId}` 
+    : `💳 Payment Confirmed - TRADENEST Order #${shortId}`;
+
+  return sendMailSafe(customer.email, subject, html, text);
 }
 
 export async function sendOrderStatusEmail(
@@ -263,4 +270,57 @@ export async function sendOrderStatusEmail(
   const text = `Hi ${name},\n\nOrder #${shortId} update: ${headline}.\nStatus: ${status}.\nView: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
 
   return sendMailSafe(customer.email, subject, html, text);
+}
+
+
+export async function sendNewOrderReceivedSellerEmail(
+  order: any,
+  sellerUser: { email: string; firstName?: string; storeName?: string },
+  sellerItems: any[]
+) {
+  const shortId = order.id.slice(0, 8);
+  const name = sellerUser.firstName || sellerUser.storeName || 'Seller';
+  const total = Number(order.total || 0).toFixed(2);
+  const itemsHtml = sellerItems.map((item) => `
+    <tr>
+      <td><strong>${item.title || item.product?.title || 'Product'}</strong></td>
+      <td style="text-align: center;">${item.quantity}</td>
+      <td style="text-align: right;">₹${Number(item.price).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const body = `
+    <h2 class="title">🎉 New Order Received!</h2>
+    <p>Hi <strong>${name}</strong>,</p>
+    <p>Great news! A customer has placed a new order containing items from your store. Please review the details below and prepare to fulfill it.</p>
+    
+    <div class="order-box">
+      <strong>Order ID:</strong> #${shortId}<br/>
+      <strong>Order Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Approval</span><br/>
+      <strong>Payment Method:</strong> ${order.payment?.provider || 'Direct'}<br/>
+      <strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th style="text-align: center;">Qty</th>
+          <th style="text-align: right;">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+      </tbody>
+    </table>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/orders?search=${order.id}" class="btn">View & Approve Order</a>
+    </div>
+  `;
+
+  const html = getBaseTemplate(`New Order #${shortId} Received`, body);
+  const text = `Hi ${name},\n\nYou have received a new order #${shortId} for ₹${total}.\nView & approve it at: ${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/orders?search=${order.id}`;
+
+  return sendMailSafe(sellerUser.email, `🔔 New Order Received - TRADENEST #${shortId}`, html, text);
 }

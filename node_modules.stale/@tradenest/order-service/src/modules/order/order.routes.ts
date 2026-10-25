@@ -5,7 +5,7 @@ import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError, generateInvoiceNumber } from '@tradenest/common';
 import { OrderQuerySchema, CreateOrderDtoSchema, OrderStatus, PaymentProvider, PaymentStatus } from '@tradenest/common';
 import { generateInvoicePdf } from './invoice.service';
-import { sendOrderPlacedEmail, sendPaymentConfirmedEmail, sendOrderStatusEmail } from '../../utils/orderMailer';
+import { sendOrderPlacedEmail, sendPaymentConfirmedEmail, sendOrderStatusEmail, sendNewOrderReceivedSellerEmail } from '../../utils/orderMailer';
 
 const router = Router();
 
@@ -425,7 +425,7 @@ router.post('/', asyncHandler(async (req, res) => {
         select: { userId: true },
       });
       const targetSellerUserId = sellerRecord?.userId || sId;
-      if (targetSellerUserId && targetSellerUserId !== userId) {
+      if (targetSellerUserId) {
         await createInAppNotification(
           targetSellerUserId,
           'ORDER',
@@ -468,7 +468,10 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
 
     if (!order) throw new NotFoundError('Order');
     if (order.userId !== userId) throw new ValidationError('Unauthorized');
-    if (!order.payment || order.payment.status !== PaymentStatus.SUCCESS) {
+    if (!order.payment) {
+      throw new ValidationError('Payment record not found');
+    }
+    if (order.payment.provider !== PaymentProvider.COD && order.payment.status !== PaymentStatus.SUCCESS) {
       throw new ValidationError('Payment has not been verified');
     }
     if (order.payment.provider === PaymentProvider.STRIPE) {
@@ -482,10 +485,14 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
       'razorpayPaymentId' in paymentResponse &&
       (('razorpaySignature' in paymentResponse && typeof paymentResponse.razorpaySignature === 'string') ||
         ('razorpayWebhookVerified' in paymentResponse && paymentResponse.razorpayWebhookVerified === true));
-    if (
-      (order.payment.provider === PaymentProvider.RAZORPAY || order.payment.provider === PaymentProvider.UPI) &&
-      !razorpayVerified
-    ) {
+    const upiVerified =
+      order.payment.provider === PaymentProvider.UPI &&
+      (razorpayVerified || order.payment.status === PaymentStatus.SUCCESS);
+
+    if (order.payment.provider === PaymentProvider.RAZORPAY && !razorpayVerified) {
+      throw new ValidationError('Payment has not been verified');
+    }
+    if (order.payment.provider === PaymentProvider.UPI && !upiVerified) {
       throw new ValidationError('Payment has not been verified');
     }
     if (paymentId && paymentId !== order.payment.id) {
@@ -532,12 +539,18 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
   });
 
   // 1. Notify customer in-app about confirmed payment
+  const isCod = updatedOrder.payment?.provider === PaymentProvider.COD;
+  const notifTitle = isCod ? 'Order Confirmed (Cash on Delivery)' : 'Payment Confirmed';
+  const notifBody = isCod
+    ? `Your Cash on Delivery order #${updatedOrder.id.slice(0, 8)} for ₹${Number(updatedOrder.total)} has been confirmed! Please keep cash ready upon doorstep delivery.`
+    : `Payment of ₹${Number(updatedOrder.total)} for order #${updatedOrder.id.slice(0, 8)} was successful.`;
+
   await createInAppNotification(
     userId,
     'PAYMENT',
-    'Payment Confirmed',
-    `Payment of ₹${Number(updatedOrder.total)} for order #${updatedOrder.id.slice(0, 8)} was successful.`,
-    { orderId: updatedOrder.id, paymentId: updatedOrder.payment?.id }
+    notifTitle,
+    notifBody,
+    { orderId: updatedOrder.id, paymentId: updatedOrder.payment?.id, isCod }
   );
 
   // 2. Notify sellers of items in this order about confirmed payment
@@ -549,7 +562,7 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
         select: { userId: true },
       });
       const targetSellerUserId = sellerRecord?.userId || sId;
-      if (targetSellerUserId && targetSellerUserId !== userId) {
+      if (targetSellerUserId) {
         await createInAppNotification(
           targetSellerUserId,
           'ORDER',
@@ -802,9 +815,25 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   } else if (status === 'DELIVERED') {
     title = 'Order Delivered Successfully!';
     body = `Your order #${order.id.slice(0, 8)} has been delivered. Thank you for shopping with TRADENEST!`;
+    // If order was Cash on Delivery, mark payment as SUCCESS (Cash Collected)
+    await prisma.payment.updateMany({
+      where: { orderId: order.id, provider: PaymentProvider.COD, status: PaymentStatus.INITIATED },
+      data: {
+        status: PaymentStatus.SUCCESS,
+        rawResponse: { type: 'COD', cashCollected: true, collectedAt: new Date().toISOString() },
+      },
+    }).catch((err) => console.warn('Failed to update COD payment to SUCCESS upon delivery:', err));
   } else if (status === 'CANCELLED') {
     title = 'Order Cancelled';
     body = `Your order #${order.id.slice(0, 8)} has been cancelled.`;
+    // If order was Cash on Delivery, mark payment as FAILED / CANCELLED
+    await prisma.payment.updateMany({
+      where: { orderId: order.id, provider: PaymentProvider.COD, status: PaymentStatus.INITIATED },
+      data: {
+        status: PaymentStatus.FAILED,
+        rawResponse: { type: 'COD', cancelled: true, cancelledAt: new Date().toISOString() },
+      },
+    }).catch((err) => console.warn('Failed to update COD payment to FAILED upon cancellation:', err));
   }
 
   // Create notification for customer

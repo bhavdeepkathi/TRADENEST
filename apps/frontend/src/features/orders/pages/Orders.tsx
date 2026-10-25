@@ -201,7 +201,7 @@ export default function Orders() {
                     </span>
                     {order.payment && (
                       <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium', paymentStatusConfig[order.payment.status]?.color || 'bg-gray-100 text-gray-700')}>
-                        {paymentStatusConfig[order.payment.status]?.label || order.payment.status}
+                        {order.payment.provider === 'COD' ? (order.payment.status === 'SUCCESS' ? 'Cash Collected' : 'Due on Delivery') : (paymentStatusConfig[order.payment.status]?.label || order.payment.status)}
                       </span>
                     )}
                     {order.returns && order.returns.length > 0 && (
@@ -277,7 +277,7 @@ export default function Orders() {
                 {order.payment && (
                   <div className="mt-2 flex items-center gap-2 text-xs text-secondary-500">
                     <span>Payment:</span>
-                    <span className="font-medium capitalize">{order.payment.provider.toLowerCase()}</span>
+                    <span className="font-medium">{order.payment.provider === 'COD' ? 'Cash on Delivery' : order.payment.provider.toLowerCase()}</span>
                     <span className="text-secondary-400">|</span>
                     <span className={clsx('font-medium', paymentStatusConfig[order.payment.status]?.color?.includes('green') && 'text-green-600')}>
                       {paymentStatusConfig[order.payment.status]?.label || order.payment.status}

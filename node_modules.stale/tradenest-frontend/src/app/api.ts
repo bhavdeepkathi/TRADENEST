@@ -640,15 +640,20 @@ export const api = createApi({
       razorpayKeyId?: string
       stripeClientSecret?: string
       upiIntent?: string
+      upiVpa?: string
+      upiMerchantName?: string
       walletBalance?: number
       orderTotal?: number
       remainingBalance?: number
       paymentId: string
+      providerRef?: string
+      isCod?: boolean
+      message?: string
     }, { orderId: string; provider: string }>({
       query: (body) => ({ url: '/payments/intent', method: 'POST', body }),
       invalidatesTags: ['Payment'],
     }),
-    verifyPayment: builder.mutation<{ success: boolean; payment: any }, { paymentId: string; provider: string; providerRef: string; razorpayPaymentId?: string; razorpaySignature?: string; stripePaymentIntentId?: string }>({
+    verifyPayment: builder.mutation<{ success: boolean; payment: any }, { paymentId: string; provider: string; providerRef: string; razorpayPaymentId?: string; razorpaySignature?: string; stripePaymentIntentId?: string; upiId?: string; upiRef?: string }>({
       query: (body) => ({ url: '/payments/verify', method: 'POST', body }),
       invalidatesTags: ['Payment', 'Order'],
     }),

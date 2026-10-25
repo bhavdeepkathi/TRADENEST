@@ -395,6 +395,10 @@ export const PaymentIntentResponseSchema = z.object({
   razorpayOrderId: z.string().optional(),
   stripeClientSecret: z.string().optional(),
   upiIntent: z.string().optional(),
+  upiVpa: z.string().optional(),
+  upiMerchantName: z.string().optional(),
+  isCod: z.boolean().optional(),
+  message: z.string().optional(),
 });
 
 export type PaymentIntentResponse = z.infer<typeof PaymentIntentResponseSchema>;

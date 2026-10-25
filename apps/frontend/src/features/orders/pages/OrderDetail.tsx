@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Truck, Box, RotateCcw, Eye, Download, Star, CreditCard, Wallet, Smartphone, CheckCircle, Clock, MapPin, Package, AlertCircle, X, Loader2 } from 'lucide-react'
+import { Truck, Box, RotateCcw, Eye, Download, Star, CreditCard, Wallet, Smartphone, CheckCircle, Clock, MapPin, Package, AlertCircle, X, Loader2, Banknote } from 'lucide-react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { useGetOrderQuery, useCreateProductReviewMutation, useCreateReturnRequestMutation } from '../../../app/api'
@@ -29,6 +29,7 @@ const paymentMethodIcons: Record<string, any> = {
   STRIPE: CreditCard,
   UPI: Smartphone,
   WALLET: Wallet,
+  COD: Banknote,
 }
 
 export default function OrderDetail() {
@@ -185,7 +186,7 @@ export default function OrderDetail() {
             {order.payment && (
               <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium', paymentCfg?.color || 'bg-gray-100 text-gray-700')}>
                 <PaymentStatusIcon className="h-3.5 w-3.5" fill="currentColor" />
-                {paymentCfg?.label || order.payment.status}
+                {order.payment.provider === 'COD' ? (order.payment.status === 'SUCCESS' ? 'Cash Collected' : 'Due on Delivery') : (paymentCfg?.label || order.payment.status)}
               </span>
             )}
           </div>
@@ -402,7 +403,7 @@ export default function OrderDetail() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <p className="text-sm text-secondary-500">Payment Method</p>
-                    <p className="font-medium capitalize">{order.payment.provider.toLowerCase()}</p>
+                    <p className="font-medium">{order.payment.provider === 'COD' ? 'Cash on Delivery (COD)' : order.payment.provider.toLowerCase()}</p>
                   </div>
                   <div>
                     <p className="text-sm text-secondary-500">Payment Status</p>
