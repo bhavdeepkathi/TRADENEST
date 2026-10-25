@@ -1,18 +1,91 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
+import { createApi, fetchBaseQuery, type BaseQueryFn, type FetchArgs, type FetchBaseQueryError } from '@reduxjs/toolkit/query/react'
 import type { RootState } from './store'
+import { setCredentials, logout } from '../features/auth/authSlice'
 
 const baseUrl = import.meta.env.VITE_API_URL || '/api'
 
+const baseQuery = fetchBaseQuery({
+  baseUrl,
+  prepareHeaders: (headers, { getState }) => {
+    const token = (getState() as RootState).auth.accessToken
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    return headers
+  },
+})
+
+let refreshPromise: Promise<boolean> | null = null
+
+const baseQueryWithReauth: BaseQueryFn<
+  string | FetchArgs,
+  unknown,
+  FetchBaseQueryError
+> = async (args, api, extraOptions) => {
+  let result = await baseQuery(args, api, extraOptions)
+
+  if (result.error && (result.error.status === 401 || (result.error.data as any)?.code === 'AUTHENTICATION_ERROR')) {
+    const url = typeof args === 'string' ? args : args.url
+    if (url.includes('/auth/refresh') || url.includes('/auth/login')) {
+      return result
+    }
+
+    const state = api.getState() as RootState
+    const refreshToken = state.auth.refreshToken
+
+    if (refreshToken) {
+      if (!refreshPromise) {
+        refreshPromise = (async () => {
+          try {
+            const refreshResult = await baseQuery(
+              {
+                url: '/auth/refresh',
+                method: 'POST',
+                body: { refreshToken },
+              },
+              api,
+              extraOptions
+            )
+
+            if (refreshResult.data) {
+              const data = refreshResult.data as { accessToken: string; refreshToken: string }
+              const currentState = api.getState() as RootState
+              if (currentState.auth.user) {
+                api.dispatch(
+                  setCredentials({
+                    user: currentState.auth.user,
+                    accessToken: data.accessToken,
+                    refreshToken: data.refreshToken || refreshToken,
+                  })
+                )
+              }
+              return true
+            } else {
+              api.dispatch(logout())
+              return false
+            }
+          } catch {
+            api.dispatch(logout())
+            return false
+          } finally {
+            refreshPromise = null
+          }
+        })()
+      }
+
+      const refreshed = await refreshPromise
+      if (refreshed) {
+        result = await baseQuery(args, api, extraOptions)
+      }
+    } else {
+      api.dispatch(logout())
+    }
+  }
+
+  return result
+}
+
 export const api = createApi({
   reducerPath: 'api',
-  baseQuery: fetchBaseQuery({
-    baseUrl,
-    prepareHeaders: (headers, { getState }) => {
-      const token = (getState() as RootState).auth.accessToken
-      if (token) headers.set('Authorization', `Bearer ${token}`)
-      return headers
-    },
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment', 'Address', 'Notification', 'Coupon'],
   endpoints: (builder) => ({
     login: builder.mutation<{
@@ -917,6 +990,14 @@ export const api = createApi({
       }),
       invalidatesTags: ['User'],
     }),
+    createTestAlert: builder.mutation<any, { type: 'infra' | 'fraud'; severity?: string; message?: string }>({
+      query: (body) => ({
+        url: '/users/admin/alerts/test',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
   }),
 })
 
@@ -977,4 +1058,5 @@ export const {
   useUpdateUserStatusMutation,
   useGetAdminAlertsQuery,
   useAcknowledgeAlertMutation,
+  useCreateTestAlertMutation,
 } = api

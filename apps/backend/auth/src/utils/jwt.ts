@@ -10,6 +10,7 @@ export async function generateAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
+    .setJti(Math.random().toString(36).substring(2) + Date.now().toString(36))
     .setIssuer(config.JWT_ISSUER)
     .setAudience(config.JWT_AUDIENCE)
     .setExpirationTime(config.JWT_ACCESS_EXPIRY)
@@ -17,9 +18,11 @@ export async function generateAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp
 }
 
 export async function generateRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): Promise<string> {
-  return new SignJWT({ ...payload })
+  const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
+  return new SignJWT({ ...payload, jti: nonce })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
+    .setJti(nonce)
     .setIssuer(config.JWT_ISSUER)
     .setAudience(config.JWT_AUDIENCE)
     .setExpirationTime(config.JWT_REFRESH_EXPIRY)

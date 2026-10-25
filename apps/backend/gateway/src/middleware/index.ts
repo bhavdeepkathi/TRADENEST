@@ -46,9 +46,29 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
   console.error('Gateway error:', err);
   
-  const statusCode = (err as any).statusCode || 500;
-  const code = (err as any).code || 'INTERNAL_ERROR';
-  const message = err.message || 'Internal server error';
+  const isAuthError = 
+    (err as any).name === 'AuthenticationError' ||
+    (err as any).code === 'AUTHENTICATION_ERROR' ||
+    (err as any).name === 'TokenExpiredError' ||
+    (err as any).name === 'JsonWebTokenError' ||
+    (err as any).name === 'JWTExpired' ||
+    (err as any).name === 'JWTInvalid' ||
+    (err as any).name === 'JWSSignatureVerificationFailed' ||
+    (err as any).name === 'JOSEError' ||
+    (typeof (err as any).code === 'string' && (err as any).code.startsWith('ERR_JWT_')) ||
+    (typeof (err as any).code === 'string' && (err as any).code.startsWith('ERR_JWS_')) ||
+    Boolean(err.message && (
+      err.message.includes('claim timestamp check failed') ||
+      err.message.includes('signature verification failed') ||
+      err.message.includes('Invalid Compact JWS') ||
+      err.message.includes('Access token')
+    ));
+
+  const statusCode = isAuthError ? 401 : ((err as any).statusCode || 500);
+  const code = isAuthError ? 'AUTHENTICATION_ERROR' : ((err as any).code || 'INTERNAL_ERROR');
+  const message = isAuthError 
+    ? (err.message || 'Access token invalid or expired. Please sign in again.')
+    : (err.message || 'Internal server error');
   
   res.status(statusCode).json({ code, message });
 }

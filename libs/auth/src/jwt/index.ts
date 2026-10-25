@@ -37,6 +37,7 @@ export async function generateAccessToken(
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: cfg.jwtAlgorithm })
     .setIssuedAt()
+    .setJti(Math.random().toString(36).substring(2) + Date.now().toString(36))
     .setIssuer(cfg.issuer)
     .setAudience(cfg.audience)
     .setExpirationTime(expiry)

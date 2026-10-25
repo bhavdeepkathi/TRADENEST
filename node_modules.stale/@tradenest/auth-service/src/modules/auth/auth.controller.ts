@@ -1,10 +1,11 @@
+import crypto from 'crypto';
 import { prisma } from '../../utils/prisma';
 import bcrypt from 'bcryptjs';
 import { config } from '../../config';
 import { generateOTP, generateSlug } from '@tradenest/common';
 import { AppError, NotFoundError, ConflictError, ValidationError } from '@tradenest/common';
 import { tokenStore, otpStore } from '../../utils/redis';
-import { generateAccessToken, generateRefreshToken, parseTokenExpiry } from '../../utils/jwt';
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken, parseTokenExpiry } from '../../utils/jwt';
 import { logger } from '../../utils/logger';
 import { RegisterDto, LoginDto, VerifyOtpDto, ForgotPasswordDto, ResetPasswordDto, TokenPair, UserRole, UpdateProfileDto } from '@tradenest/common';
 import { OAuth2Client } from 'google-auth-library';
@@ -76,7 +77,11 @@ export class AuthRepository {
   }
 
   async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date, userAgent?: string, ipAddress?: string) {
-    return prisma.refreshToken.create({ data: { userId, tokenHash, expiresAt, userAgent, ipAddress } });
+    return prisma.refreshToken.upsert({
+      where: { tokenHash },
+      update: { expiresAt, revokedAt: null },
+      create: { userId, tokenHash, expiresAt, userAgent, ipAddress }
+    });
   }
 
   async findRefreshToken(tokenHash: string) {
@@ -289,20 +294,17 @@ export class AuthService {
   }
 
   async refreshTokens(refreshToken: string): Promise<TokenPair> {
-    const tokenHash = await bcrypt.hash(refreshToken, config.BCRYPT_ROUNDS);
-    const storedToken = await this.repo.findRefreshToken(tokenHash);
-
-    if (!storedToken) {
-      throw new ValidationError('Invalid refresh token');
+    let payload: any;
+    try {
+      payload = await verifyRefreshToken(refreshToken);
+    } catch {
+      throw new ValidationError('Invalid or expired refresh token');
     }
 
-    const user = await this.repo.findUserById(storedToken.userId);
+    const user = await this.repo.findUserById(payload.sub);
     if (!user || !user.isActive) {
       throw new ValidationError('User not found or inactive');
     }
-
-    // Revoke old token
-    await this.repo.revokeRefreshToken(storedToken.id);
 
     return this.generateTokens(user);
   }
@@ -368,10 +370,10 @@ export class AuthService {
     });
 
     const refreshExpiry = parseTokenExpiry(config.JWT_REFRESH_EXPIRY);
-    const refreshTokenHash = await bcrypt.hash(refreshToken, config.BCRYPT_ROUNDS);
+    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     const expiresAt = new Date(Date.now() + refreshExpiry * 1000);
 
-    await this.repo.createRefreshToken(user.id, refreshTokenHash, expiresAt);
+    await this.repo.createRefreshToken(user.id, refreshTokenHash, expiresAt).catch(() => {});
     await tokenStore.saveRefreshToken(user.id, refreshToken, refreshExpiry);
 
     return { accessToken, refreshToken };

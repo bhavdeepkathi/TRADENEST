@@ -9,7 +9,7 @@ import {
   Search,
   Filter,
 } from 'lucide-react'
-import { useGetAdminAlertsQuery, useAcknowledgeAlertMutation } from '../../../app/api'
+import { useGetAdminAlertsQuery, useAcknowledgeAlertMutation, useCreateTestAlertMutation } from '../../../app/api'
 import { formatDistanceToNow } from '../../../utils/date'
 import toast from 'react-hot-toast'
 
@@ -19,6 +19,7 @@ export default function AlertsManagement() {
     pollingInterval: 15000,
   })
   const [acknowledgeAlert, { isLoading: isAcknowledging }] = useAcknowledgeAlertMutation()
+  const [createTestAlert, { isLoading: isCreatingTest }] = useCreateTestAlertMutation()
 
   const infraAlerts = data?.infraAlerts || []
   const fraudAlerts = data?.fraudAlerts || []
@@ -32,6 +33,18 @@ export default function AlertsManagement() {
       toast.success('Alert acknowledged')
     } catch {
       toast.error('Failed to acknowledge alert')
+    }
+  }
+
+  const handleTriggerTest = async (type: 'infra' | 'fraud') => {
+    try {
+      await createTestAlert({
+        type,
+        severity: type === 'infra' ? 'HIGH' : 'CRITICAL',
+      }).unwrap()
+      toast.success(`Test ${type === 'infra' ? 'Infrastructure' : 'Fraud'} alert generated!`)
+    } catch {
+      toast.error('Failed to generate test alert')
     }
   }
 
@@ -51,14 +64,37 @@ export default function AlertsManagement() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-          <AlertTriangle className="h-7 w-7 text-amber-500" />
-          System & Security Incident Alerts
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Monitor infrastructure exceptions, cluster anomalies, and anti-fraud security detections.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <AlertTriangle className="h-7 w-7 text-amber-500" />
+            System & Security Incident Alerts
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Monitor infrastructure exceptions, cluster anomalies, and anti-fraud security detections.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleTriggerTest('infra')}
+            disabled={isCreatingTest}
+            className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3"
+            title="Generate a simulated infrastructure alert to verify system alerts"
+          >
+            <Server className="h-3.5 w-3.5 text-amber-500" />
+            + Test Infra Alert
+          </button>
+          <button
+            onClick={() => handleTriggerTest('fraud')}
+            disabled={isCreatingTest}
+            className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3"
+            title="Generate a simulated fraud alert to verify system alerts"
+          >
+            <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+            + Test Fraud Alert
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI row */}

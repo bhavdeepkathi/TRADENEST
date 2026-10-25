@@ -27,7 +27,16 @@ export function createAuthMiddleware(options?: {
         throw new AuthenticationError('Access token required');
       }
 
-      const claims = await verifyAccessToken(token);
+      let claims: TokenClaims;
+      try {
+        claims = await verifyAccessToken(token);
+      } catch (jwtErr: any) {
+        if (options?.optional) {
+          next();
+          return;
+        }
+        throw new AuthenticationError(jwtErr?.message || 'Access token invalid or expired');
+      }
       const user = mapTokenToUser(claims);
       
       req.user = user;

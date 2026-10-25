@@ -503,6 +503,49 @@ router.patch('/admin/alerts/:id/acknowledge', authGuard, requireRoles(UserRole.A
   }
 }));
 
+// Admin: Generate a test/simulation alert (so admin can verify system alerts are working!)
+router.post('/admin/alerts/test', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  const { type = 'infra', severity = 'HIGH', message } = req.body || {};
+  const alertId = 'alert_' + Math.random().toString(36).substring(2, 11);
+
+  if (type === 'fraud') {
+    const detailsJson = JSON.stringify({
+      reason: message || 'Rapid suspicious checkout velocity detected from unusual IP (192.168.1.105)',
+      riskScore: 89,
+      country: 'IN',
+    });
+    await prisma.$executeRaw`
+      INSERT INTO "FraudAlert" ("id", "type", "severity", "details", "resolved", "createdAt")
+      VALUES (${alertId}, 'SUSPICIOUS_VELOCITY', ${severity}, ${detailsJson}::jsonb, false, NOW())
+    `;
+    return res.status(201).json({ id: alertId, type: 'fraud', message: 'Test fraud alert generated successfully' });
+  } else {
+    // Look up or link a superadmin
+    let superAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+    const superAdminUserId = superAdmin ? superAdmin.id : (req as any).user.id;
+    const superAdminRecs = await prisma.$queryRaw<any[]>`
+      SELECT id FROM "SuperAdmin" WHERE "userId" = ${superAdminUserId} LIMIT 1
+    `.catch(() => []);
+    let superAdminId: string;
+    if (superAdminRecs.length > 0) {
+      superAdminId = superAdminRecs[0].id;
+    } else {
+      superAdminId = 'sa_' + superAdminUserId.slice(-8);
+      await prisma.$executeRaw`
+        INSERT INTO "SuperAdmin" ("id", "userId") VALUES (${superAdminId}, ${superAdminUserId})
+        ON CONFLICT ("userId") DO NOTHING
+      `.catch(() => {});
+    }
+
+    const alertMessage = message || 'Postgres connection pool utilization exceeded 85% threshold (Worker node-2)';
+    await prisma.$executeRaw`
+      INSERT INTO "InfraAlert" ("id", "superAdminId", "source", "severity", "message", "acknowledged", "createdAt")
+      VALUES (${alertId}, ${superAdminId}, 'PostgresMonitor', ${severity}, ${alertMessage}, false, NOW())
+    `;
+    return res.status(201).json({ id: alertId, type: 'infra', message: 'Test infrastructure alert generated successfully' });
+  }
+}));
+
 // Admin: Get user by ID
 router.get('/:id', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({
