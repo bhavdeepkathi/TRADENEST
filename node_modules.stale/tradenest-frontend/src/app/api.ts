@@ -860,7 +860,19 @@ export const api = createApi({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: ['User', 'Product'],
+    }),
+    getMySellerStatus: builder.query<{
+      id: string
+      userId: string
+      storeName: string
+      kycStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+      kycRejectionReason?: string | null
+      totalRevenue?: number
+      totalOrders?: number
+    }, void>({
+      query: () => '/users/seller/me',
+      providesTags: ['User'],
     }),
     getAllUsers: builder.query<{
       data: Array<{
@@ -960,6 +972,7 @@ export const {
   useGetAdminStatsQuery,
   useGetAdminSellersQuery,
   useUpdateSellerKycMutation,
+  useGetMySellerStatusQuery,
   useGetAllUsersQuery,
   useUpdateUserStatusMutation,
   useGetAdminAlertsQuery,

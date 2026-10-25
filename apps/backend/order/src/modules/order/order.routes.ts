@@ -5,6 +5,7 @@ import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError, generateInvoiceNumber } from '@tradenest/common';
 import { OrderQuerySchema, CreateOrderDtoSchema, OrderStatus, PaymentProvider, PaymentStatus } from '@tradenest/common';
 import { generateInvoicePdf } from './invoice.service';
+import { sendOrderPlacedEmail, sendPaymentConfirmedEmail, sendOrderStatusEmail } from '../../utils/orderMailer';
 
 const router = Router();
 
@@ -23,6 +24,31 @@ async function resolveSellerIds(sellerIdOrUserId: string): Promise<string[]> {
     return Array.from(new Set([seller.id, seller.userId, sellerIdOrUserId]));
   }
   return [sellerIdOrUserId];
+}
+
+async function createInAppNotification(userId: string, type: string, title: string, body: string, data?: any) {
+  try {
+    const notifId = 'notif_' + Math.random().toString(36).substring(2, 11);
+    const dataJson = JSON.stringify(data || {});
+    await prisma.$executeRaw`
+      INSERT INTO "Notification" ("id", "userId", "type", "title", "body", "data", "read", "createdAt")
+      VALUES (${notifId}, ${userId}, ${type}::"NotificationType", ${title}, ${body}, ${dataJson}::jsonb, false, NOW())
+    `;
+  } catch (err) {
+    console.warn('Failed to insert notification:', err);
+  }
+}
+
+async function findUserForEmail(userId: string): Promise<{ email: string; firstName: string; lastName?: string } | null> {
+  try {
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT "email", "firstName", "lastName" FROM "User" WHERE "id" = ${userId} LIMIT 1
+    `;
+    return rows?.[0] || null;
+  } catch (err) {
+    console.warn('Failed to find user for email:', err);
+    return null;
+  }
 }
 
 // GET /api/orders - List user orders
@@ -288,7 +314,7 @@ router.post('/', asyncHandler(async (req, res) => {
     for (const cartItem of cart.items) {
       const product = cartItem.product;
 
-      if (product.status !== 'ACTIVE') {
+      if (product.status !== 'ACTIVE' || (product.seller as any)?.kycStatus === 'REJECTED') {
         throw new ValidationError(`Product "${product.title}" is no longer available`);
       }
 
@@ -381,17 +407,45 @@ router.post('/', asyncHandler(async (req, res) => {
     });
   });
 
+  // 1. Notify Customer in-app
+  await createInAppNotification(
+    userId,
+    'ORDER',
+    'Order Placed Successfully',
+    `Your order #${order.id.slice(0, 8)} for ₹${Number(order.total)} has been placed. Awaiting seller approval.`,
+    { orderId: order.id }
+  );
+
+  // 2. Notify each distinct Seller about the new order needing approval
   try {
-    await prisma.notification.create({
-      data: {
-        userId,
-        type: 'ORDER',
-        title: 'Order Placed Successfully',
-        body: `Your order #${order.id.slice(0, 8)} for ₹${Number(order.total)} has been placed.`,
-        data: { orderId: order.id },
-      },
+    const sellerIds = Array.from(new Set(order.items.map((i: any) => i.sellerId)));
+    for (const sId of sellerIds) {
+      const sellerRecord = await prisma.seller.findFirst({
+        where: { OR: [{ id: sId }, { userId: sId }] },
+        select: { userId: true },
+      });
+      const targetSellerUserId = sellerRecord?.userId || sId;
+      if (targetSellerUserId && targetSellerUserId !== userId) {
+        await createInAppNotification(
+          targetSellerUserId,
+          'ORDER',
+          'New Order Received - Approval Required',
+          `You received new order #${order.id.slice(0, 8)} (${order.items.length} item(s), ₹${Number(order.total)}). Please review and approve.`,
+          { orderId: order.id, customerId: userId, type: 'NEW_ORDER' }
+        );
+      }
+    }
+  } catch (sellerNotifErr) {
+    console.warn('Failed to notify seller of new order:', sellerNotifErr);
+  }
+
+  // 3. Dispatch purchase confirmation email to Customer
+  const customer = await findUserForEmail(userId);
+  if (customer && customer.email) {
+    sendOrderPlacedEmail(order, customer).catch((err) => {
+      console.warn('Failed to send order placed email:', err);
     });
-  } catch {}
+  }
 
   res.status(201).json(order);
 }));
@@ -477,6 +531,46 @@ router.post('/:id/confirm-payment', asyncHandler(async (req, res) => {
     });
   });
 
+  // 1. Notify customer in-app about confirmed payment
+  await createInAppNotification(
+    userId,
+    'PAYMENT',
+    'Payment Confirmed',
+    `Payment of ₹${Number(updatedOrder.total)} for order #${updatedOrder.id.slice(0, 8)} was successful.`,
+    { orderId: updatedOrder.id, paymentId: updatedOrder.payment?.id }
+  );
+
+  // 2. Notify sellers of items in this order about confirmed payment
+  try {
+    const sellerIds = Array.from(new Set(updatedOrder.items.map((i: any) => i.sellerId)));
+    for (const sId of sellerIds) {
+      const sellerRecord = await prisma.seller.findFirst({
+        where: { OR: [{ id: sId }, { userId: sId }] },
+        select: { userId: true },
+      });
+      const targetSellerUserId = sellerRecord?.userId || sId;
+      if (targetSellerUserId && targetSellerUserId !== userId) {
+        await createInAppNotification(
+          targetSellerUserId,
+          'ORDER',
+          'Payment Received for Order',
+          `Payment for order #${updatedOrder.id.slice(0, 8)} (₹${Number(updatedOrder.total)}) has been confirmed. Please approve and ship.`,
+          { orderId: updatedOrder.id, type: 'PAYMENT_CONFIRMED' }
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to notify seller of payment:', err);
+  }
+
+  // 3. Send email to customer for payment confirmation
+  const customer = await findUserForEmail(userId);
+  if (customer && customer.email) {
+    sendPaymentConfirmedEmail(updatedOrder, customer, updatedOrder.payment).catch((err) => {
+      console.warn('Failed to send payment confirmed email:', err);
+    });
+  }
+
   res.json(updatedOrder);
 }));
 
@@ -534,7 +628,7 @@ router.post('/coupons/validate', asyncHandler(async (req, res) => {
 // GET /api/orders/coupons - List active coupons
 router.get('/coupons', asyncHandler(async (req, res) => {
   const coupons = await prisma.coupon.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: { startAt: 'desc' },
     take: 50,
   });
   res.json(coupons);
@@ -603,7 +697,6 @@ router.get('/seller/:sellerId/analytics', asyncHandler(async (req, res) => {
         },
       },
     },
-    orderBy: { createdAt: 'desc' },
   });
 
   // Unique orders
@@ -630,7 +723,7 @@ router.get('/seller/:sellerId/analytics', asyncHandler(async (req, res) => {
     dailyBuckets.set(key, { date: key, revenue: 0, orders: new Set() });
   }
 
-  for (const item of allOrderItems) {
+  for (const item of (allOrderItems as any[])) {
     const itemRev = Number(item.price) * item.quantity - Number(item.discount || 0);
     totalRevenue += itemRev;
 
@@ -691,20 +784,39 @@ router.get('/seller/:sellerId/analytics', asyncHandler(async (req, res) => {
 router.patch('/:id/status', asyncHandler(async (req, res) => {
   const { status } = req.body;
   if (!Object.values(OrderStatus).includes(status)) throw new ValidationError('Invalid status');
-  const order = await prisma.order.update({ where: { id: req.params.id }, data: { status } });
+  const order = await prisma.order.update({
+    where: { id: req.params.id },
+    data: { status },
+    include: { items: true },
+  });
   
+  // Custom friendly title & body based on status
+  let title = `Order Status: ${status}`;
+  let body = `Your order #${order.id.slice(0, 8)} status has been updated to ${status}.`;
+  if (status === 'CONFIRMED') {
+    title = 'Order Approved by Seller!';
+    body = `Great news! Your order #${order.id.slice(0, 8)} has been approved by the seller and is now being processed.`;
+  } else if (status === 'SHIPPED') {
+    title = 'Order Shipped!';
+    body = `Your order #${order.id.slice(0, 8)} has been shipped and is on the way.`;
+  } else if (status === 'DELIVERED') {
+    title = 'Order Delivered Successfully!';
+    body = `Your order #${order.id.slice(0, 8)} has been delivered. Thank you for shopping with TRADENEST!`;
+  } else if (status === 'CANCELLED') {
+    title = 'Order Cancelled';
+    body = `Your order #${order.id.slice(0, 8)} has been cancelled.`;
+  }
+
   // Create notification for customer
-  try {
-    await prisma.notification.create({
-      data: {
-        userId: order.userId,
-        type: 'ORDER',
-        title: `Order Status: ${status}`,
-        body: `Your order #${order.id.slice(0, 8)} status has been updated to ${status}.`,
-        data: { orderId: order.id, status },
-      },
+  await createInAppNotification(order.userId, 'ORDER', title, body, { orderId: order.id, status });
+
+  // Dispatch email to customer (especially for approval CONFIRMED, SHIPPED, and DELIVERED)
+  const customer = await findUserForEmail(order.userId);
+  if (customer && customer.email) {
+    sendOrderStatusEmail(order, customer, status).catch((err) => {
+      console.warn('Failed to send status update email:', err);
     });
-  } catch {}
+  }
 
   res.json(order);
 }));

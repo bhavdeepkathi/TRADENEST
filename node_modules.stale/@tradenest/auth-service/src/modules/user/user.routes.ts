@@ -7,6 +7,7 @@ import { NotFoundError, ValidationError } from '@tradenest/common';
 import { UpdateProfileDtoSchema, ChangePasswordDtoSchema, CreateAddressDtoSchema, UpdateAddressDtoSchema } from '@tradenest/common';
 import bcrypt from 'bcryptjs';
 import { UserRole } from '@tradenest/common';
+import { sendKycDecisionEmail } from '../../utils/mailer';
 
 const router = Router();
 
@@ -41,7 +42,47 @@ router.get('/profile', authGuard, asyncHandler(async (req: AuthenticatedRequest,
     },
   });
   if (!user) throw new NotFoundError('User');
-  res.json(user);
+
+  let seller: any = null;
+  if (user.role === 'SELLER') {
+    const sellers = await prisma.$queryRaw<any[]>`
+      SELECT id, "storeName", "kycStatus", "kycRejectionReason", gstin
+      FROM "Seller"
+      WHERE "userId" = ${req.user.id} OR id = ${req.user.id}
+      LIMIT 1
+    `.catch(() => []);
+    seller = sellers[0] || null;
+  }
+
+  res.json({ ...user, seller });
+}));
+
+// Seller: Get current seller status & store profile
+router.get('/seller/me', authGuard, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const sellers = await prisma.$queryRaw<any[]>`
+    SELECT id, "userId", "storeName", "kycStatus", "kycRejectionReason", gstin, "totalRevenue"::text as "totalRevenue", "totalOrders"
+    FROM "Seller"
+    WHERE "userId" = ${req.user.id} OR id = ${req.user.id}
+    LIMIT 1
+  `.catch(() => []);
+
+  if (!sellers || sellers.length === 0) {
+    return res.json({
+      id: req.user.id,
+      userId: req.user.id,
+      storeName: 'My Store',
+      kycStatus: 'PENDING',
+      kycRejectionReason: null,
+      totalRevenue: 0,
+      totalOrders: 0,
+    });
+  }
+
+  const s = sellers[0];
+  res.json({
+    ...s,
+    totalRevenue: parseFloat(s.totalRevenue || '0'),
+  });
 }));
 
 // Update profile
@@ -166,8 +207,33 @@ router.get('/', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), a
   });
 }));
 
+async function syncMissingSellers() {
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "Seller" ("id", "userId", "storeName", "kycStatus", "totalRevenue", "totalOrders", "createdAt", "updatedAt")
+      SELECT 
+        'seller_' || SUBSTRING(u."id" FROM 15),
+        u."id",
+        u."firstName" || '''s Store',
+        'PENDING'::"KYCStatus",
+        0,
+        0,
+        u."createdAt",
+        NOW()
+      FROM "User" u
+      LEFT JOIN "Seller" s ON u."id" = s."userId"
+      WHERE u."role" = 'SELLER' AND s."id" IS NULL
+      ON CONFLICT ("userId") DO NOTHING
+    `;
+  } catch (syncErr) {
+    console.warn('Failed to auto-sync missing sellers:', syncErr);
+  }
+}
+
 // Admin: Get platform aggregate stats
 router.get('/admin/stats', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  await syncMissingSellers();
+
   const [
     totalUsers,
     totalCustomers,
@@ -207,6 +273,7 @@ router.get('/admin/stats', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPE
 
 // Admin: Get all sellers (with user profile & KYC details)
 router.get('/admin/sellers', authGuard, requireRoles(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req: Request, res: Response) => {
+  await syncMissingSellers();
   const kycStatus = req.query.kycStatus as string | undefined;
 
   let rawSellers: any[] = [];
@@ -342,6 +409,26 @@ router.patch('/admin/sellers/:id/kyc', authGuard, requireRoles(UserRole.ADMIN, U
     console.warn('Failed to update seller KYC status:', err);
   }
 
+  // If rejected, immediately deactivate all products belonging to this seller
+  if (status === 'REJECTED') {
+    try {
+      await prisma.$executeRaw`
+        UPDATE "Product"
+        SET "status" = 'INACTIVE'::"ProductStatus", "updatedAt" = NOW()
+        WHERE "sellerId" = ${seller.id} OR "sellerId" = ${seller.userId}
+      `;
+      console.log(`Deactivated active products for rejected seller ${seller.id}`);
+    } catch (prodErr: any) {
+      console.warn('Failed to deactivate products for rejected seller:', prodErr);
+    }
+  }
+
+  // Look up user to notify via in-app notification AND send email
+  const user = await prisma.user.findUnique({
+    where: { id: seller.userId },
+    select: { id: true, email: true, firstName: true },
+  });
+
   // Notify seller of KYC decision
   try {
     const notifId = 'notif_' + Math.random().toString(36).substring(2, 11);
@@ -354,6 +441,13 @@ router.patch('/admin/sellers/:id/kyc', authGuard, requireRoles(UserRole.ADMIN, U
       VALUES (${notifId}, ${seller.userId}, 'SYSTEM'::"NotificationType", ${title}, ${body}, false, NOW())
     `;
   } catch {}
+
+  // Send branded email to seller
+  if (user && user.email) {
+    sendKycDecisionEmail(user.email, status as 'APPROVED' | 'REJECTED', user.firstName, reason || undefined).catch((err) => {
+      console.warn('Failed to send KYC decision email:', err);
+    });
+  }
 
   res.json({
     ...seller,

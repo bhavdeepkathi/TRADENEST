@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { getRedisClient } from '../../utils/redis';
 import { asyncHandler } from '../../middlewares/errorHandler';
 import { config } from '../../config';
 
 const router = Router();
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const checks = { status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime(), environment: config.NODE_ENV, services: {} as Record<string, { status: string; latency?: number; error?: string }> };
   const dbStart = Date.now();
   try { await prisma.$queryRaw`SELECT 1`; checks.services.database = { status: 'healthy', latency: Date.now() - dbStart }; }

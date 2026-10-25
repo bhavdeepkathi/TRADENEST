@@ -1,7 +1,7 @@
-import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw, Save } from 'lucide-react'
+import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw, Save, AlertTriangle, AlertCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useGetSellerProductsQuery, useDeleteProductMutation, useUpdateProductMutation } from '../../../app/api'
+import { useGetSellerProductsQuery, useDeleteProductMutation, useUpdateProductMutation, useGetMySellerStatusQuery } from '../../../app/api'
 import toast from 'react-hot-toast'
 
 const statusStyles: Record<string, string> = {
@@ -35,6 +35,7 @@ export default function Inventory() {
   const navigate = useNavigate()
 
   const { data, isLoading, error, refetch } = useGetSellerProductsQuery({ page, limit: 10, status: statusFilter !== 'all' ? statusFilter : undefined })
+  const { data: sellerStatus } = useGetMySellerStatusQuery()
   const [deleteProduct] = useDeleteProductMutation()
   const [updateProduct, { isLoading: isUpdatingStock }] = useUpdateProductMutation()
 
@@ -115,11 +116,48 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Inventory</h1>
           <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage your product catalog and stock levels.</p>
         </div>
-        <Link to="/seller/products/add" className="btn btn-primary">
+        <Link
+          to="/seller/products/add"
+          className={clsx('btn btn-primary', sellerStatus?.kycStatus !== 'APPROVED' && 'opacity-70')}
+        >
           <PlusCircle className="mr-2 h-4 w-4" />
           Add Product
         </Link>
       </div>
+
+      {sellerStatus?.kycStatus === 'REJECTED' && (
+        <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 text-red-800 dark:text-red-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-red-900 dark:text-red-200">Seller KYC Verification Rejected</h3>
+              <p className="text-sm mt-1">
+                Your seller KYC verification was rejected by administration.
+                {sellerStatus?.kycRejectionReason && (
+                  <span className="font-medium"> Reason: {sellerStatus.kycRejectionReason}</span>
+                )}
+              </p>
+              <p className="text-xs mt-1 text-red-700 dark:text-red-400">
+                All your products have been hidden from customer marketplace searches and product pages. Adding and updating products is disabled until KYC approval.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sellerStatus?.kycStatus === 'PENDING' && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-amber-900 dark:text-amber-200">KYC Status: Pending Review</h3>
+              <p className="text-sm mt-1">
+                Your seller KYC verification is currently being reviewed by administrators. Your products will not be visible to customers until your account is approved.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="card p-4 sm:p-6">

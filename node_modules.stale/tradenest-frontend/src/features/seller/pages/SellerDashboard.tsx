@@ -1,7 +1,7 @@
-import { Package, ShoppingBag, DollarSign, TrendingUp, PlusCircle, Eye, Loader2 } from 'lucide-react'
+import { Package, ShoppingBag, DollarSign, TrendingUp, PlusCircle, Eye, Loader2, AlertTriangle, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAppSelector } from '../../../app/hooks'
-import { useGetSellerAnalyticsQuery, useGetSellerOrdersQuery } from '../../../app/api'
+import { useGetSellerAnalyticsQuery, useGetSellerOrdersQuery, useGetMySellerStatusQuery } from '../../../app/api'
 
 const statusStyles: Record<string, string> = {
   DELIVERED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -15,6 +15,7 @@ const statusStyles: Record<string, string> = {
 export default function SellerDashboard() {
   const user = useAppSelector((state) => state.auth.user)
   const sellerId = user?.id || 'me'
+  const { data: sellerStatus } = useGetMySellerStatusQuery()
   const { data: analytics, isLoading: isAnalyticsLoading } = useGetSellerAnalyticsQuery()
   const { data: ordersData, isLoading: isOrdersLoading } = useGetSellerOrdersQuery({ sellerId, page: 1, limit: 5 })
 
@@ -71,6 +72,40 @@ export default function SellerDashboard() {
           Add Product
         </Link>
       </div>
+
+      {sellerStatus?.kycStatus === 'REJECTED' && (
+        <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 text-red-800 dark:text-red-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-red-900 dark:text-red-200">Seller Account KYC Rejected</h3>
+              <p className="text-sm mt-1">
+                Your seller KYC verification was rejected by administration.
+                {sellerStatus?.kycRejectionReason && (
+                  <span className="font-medium"> Reason: {sellerStatus.kycRejectionReason}</span>
+                )}
+              </p>
+              <p className="text-xs mt-1 text-red-700 dark:text-red-400">
+                Products are hidden from public customer searches. New product publication is disabled until an administrator approves your KYC.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sellerStatus?.kycStatus === 'PENDING' && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-amber-900 dark:text-amber-200">KYC Verification In Progress</h3>
+              <p className="text-sm mt-1">
+                Your seller application has been submitted and is awaiting admin approval. Your products will become visible to customers once approved.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       {isAnalyticsLoading ? (

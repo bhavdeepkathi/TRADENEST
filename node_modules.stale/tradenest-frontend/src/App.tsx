@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useAppSelector } from './app/hooks'
 import { ProtectedRoute, GuestRoute, AdminRoute } from './components/RoleBasedRoute'
 import { RoleFallbackRedirect } from './components/RoleFallbackRedirect'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import SellerLayout from './components/SellerLayout'
 import AdminLayout from './components/AdminLayout'
@@ -51,25 +52,47 @@ function PageTransition() {
 
 function CustomerRoute() {
   const { user } = useAppSelector((state) => state.auth)
-  const isCustomer = user?.role === 'CUSTOMER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
-  return isCustomer ? <Outlet /> : <Navigate to="/seller/dashboard" replace />
+  if (user?.role === 'SELLER') {
+    return <Navigate to="/seller/dashboard" replace />
+  }
+  return <Outlet />
 }
 
 function SellerRoute() {
   const { user } = useAppSelector((state) => state.auth)
-  const isSeller = user?.role === 'SELLER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
-  return isSeller ? <Outlet /> : <Navigate to="/" replace />
+  if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
+    return <Navigate to="/admin/dashboard" replace />
+  }
+  return user?.role === 'SELLER' ? <Outlet /> : <Navigate to="/" replace />
+}
+
+function RoleSettingsRedirect() {
+  const { user } = useAppSelector((state) => state.auth)
+  if (user?.role === 'SELLER') {
+    return <Navigate to="/seller/settings" replace />
+  }
+  if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
+    return <Navigate to="/admin/dashboard" replace />
+  }
+  if (user?.role === 'CUSTOMER') {
+    return <Navigate to="/profile" replace />
+  }
+  return <Navigate to="/login" replace />
 }
 
 function App() {
   return (
-    <Routes>
-      {/* Public Routes (no layout) */}
-      <Route element={<GuestRoute />}>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-      </Route>
+    <ErrorBoundary>
+      <Routes>
+        {/* Settings generic redirect */}
+        <Route path="/settings" element={<RoleSettingsRedirect />} />
+
+        {/* Public Routes (no layout) */}
+        <Route element={<GuestRoute />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+        </Route>
 
       {/* Catalog & Customer Routes */}
       <Route element={<Layout />}>
@@ -124,6 +147,7 @@ function App() {
       {/* Fallback - redirect based on role */}
       <Route path="*" element={<RoleFallbackRedirect />} />
     </Routes>
+    </ErrorBoundary>
   )
 }
 

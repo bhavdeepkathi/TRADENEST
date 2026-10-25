@@ -16,7 +16,19 @@ export class AuthRepository {
   }
 
   async findUserById(id: string) {
-    return prisma.user.findUnique({ where: { id } });
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return null;
+    let seller: any = null;
+    if (user.role === 'SELLER') {
+      const sellers = await prisma.$queryRaw<any[]>`
+        SELECT id, "storeName", "kycStatus", "kycRejectionReason", gstin
+        FROM "Seller"
+        WHERE "userId" = ${id} OR id = ${id}
+        LIMIT 1
+      `.catch(() => []);
+      seller = sellers[0] || null;
+    }
+    return { ...user, seller };
   }
 
   async createUser(data: {
@@ -143,6 +155,10 @@ export class AuthService {
       role: dto.role,
     });
 
+    if (dto.role === UserRole.SELLER || (dto.role as string) === 'SELLER') {
+      await this.ensureSellerAccount(user);
+    }
+
     // Generate and send OTP for email verification
     const otp = generateOTP(config.OTP_LENGTH);
     const otpHash = await bcrypt.hash(otp, config.BCRYPT_ROUNDS);
@@ -188,7 +204,57 @@ export class AuthService {
     await this.repo.markOtpUsed(otpRecord.id);
     await this.repo.updateUser(user.id, { isVerified: true });
 
+    if (user.role === UserRole.SELLER || (user.role as string) === 'SELLER') {
+      await this.ensureSellerAccount(user);
+    }
+
     return this.generateTokens(user);
+  }
+
+  async ensureSellerAccount(user: { id: string; email: string; firstName: string; lastName: string }) {
+    try {
+      const sellerId = 'seller_' + user.id.slice(-12);
+      const storeName = `${user.firstName}'s Store`;
+
+      const existing = await prisma.$queryRaw<any[]>`
+        SELECT "id" FROM "Seller" WHERE "userId" = ${user.id} LIMIT 1
+      `.catch(() => []);
+
+      if (!existing || existing.length === 0) {
+        await prisma.$executeRaw`
+          INSERT INTO "Seller" ("id", "userId", "storeName", "kycStatus", "totalRevenue", "totalOrders", "createdAt", "updatedAt")
+          VALUES (${sellerId}, ${user.id}, ${storeName}, 'PENDING'::"KYCStatus", 0, 0, NOW(), NOW())
+          ON CONFLICT ("userId") DO NOTHING
+        `;
+
+        // Send notifications to all SUPER_ADMIN and ADMIN users
+        const admins = await prisma.user.findMany({
+          where: { role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
+          select: { id: true, email: true },
+        });
+
+        for (const admin of admins) {
+          const notifId = 'notif_' + Math.random().toString(36).substring(2, 11);
+          const title = 'New Seller Registration Request';
+          const body = `New seller request: ${user.firstName} ${user.lastName} (${user.email}). Store: "${storeName}". Pending KYC review.`;
+          const dataJson = JSON.stringify({
+            type: 'SELLER_REGISTRATION',
+            sellerId,
+            userId: user.id,
+            email: user.email,
+            storeName,
+          });
+
+          await prisma.$executeRaw`
+            INSERT INTO "Notification" ("id", "userId", "type", "title", "body", "data", "read", "createdAt")
+            VALUES (${notifId}, ${admin.id}, 'SYSTEM'::"NotificationType", ${title}, ${body}, ${dataJson}::jsonb, false, NOW())
+          `;
+        }
+        logger.info(`✅ Created Seller record and notified ${admins.length} admin(s) for user: ${user.email}`);
+      }
+    } catch (err: any) {
+      logger.error('Failed in ensureSellerAccount:', err);
+    }
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
@@ -392,6 +458,10 @@ export class AuthService {
 
     if (!user.isActive) {
       throw new ValidationError('Account is deactivated');
+    }
+
+    if (user.role === UserRole.SELLER || (user.role as string) === 'SELLER') {
+      await this.ensureSellerAccount(user);
     }
 
     await this.repo.createAuditLog(user.id, 'GOOGLE_LOGIN_SUCCESS', 'User', user.id);

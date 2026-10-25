@@ -1,16 +1,17 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { User, Bell, Shield, Palette, Save, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { User, Bell, Shield, Palette, Save, Loader2, X, Lock } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { useUpdateProfileMutation } from '../../../app/api'
+import { useUpdateProfileMutation, useChangePasswordMutation, useGetMySellerStatusQuery } from '../../../app/api'
+import { useAppSelector } from '../../../app/hooks'
 
 const settingsSchema = z.object({
   // General
   storeName: z.string().min(2, 'Store name must be at least 2 characters'),
   storeDescription: z.string().optional(),
-  storeUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
+  storeUrl: z.string().optional().or(z.literal('')),
   contactEmail: z.string().email('Invalid email').optional().or(z.literal('')),
   phone: z.string().optional(),
   address: z.string().optional(),
@@ -35,10 +36,10 @@ type SettingsForm = z.infer<typeof settingsSchema>
 const initialValues: SettingsForm = {
   storeName: 'My Awesome Store',
   storeDescription: 'Your one-stop shop for quality products',
-  storeUrl: 'https://tradenest.in/store/my-awesome-store',
-  contactEmail: 'seller@example.com',
-  phone: '+91 98765 43210',
-  address: '123 Business St, Bangalore, KA 560001',
+  storeUrl: 'my-awesome-store',
+  contactEmail: '',
+  phone: '',
+  address: '',
   emailNotifications: true,
   smsNotifications: false,
   orderNotifications: true,
@@ -47,6 +48,16 @@ const initialValues: SettingsForm = {
   loginAlerts: true,
   theme: 'system',
   primaryColor: '#3B82F6',
+}
+
+function getSavedSettings(): SettingsForm {
+  try {
+    const saved = localStorage.getItem('tradenest_seller_settings')
+    if (saved) {
+      return { ...initialValues, ...JSON.parse(saved) }
+    }
+  } catch {}
+  return initialValues
 }
 
 const tabs = [
@@ -59,6 +70,10 @@ const tabs = [
 export default function SellerSettings() {
   const [activeTab, setActiveTab] = useState('general')
   const [isSaving, setIsSaving] = useState(false)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+
+  const { user } = useAppSelector((state) => state.auth)
+  const { data: sellerStatus } = useGetMySellerStatusQuery()
 
   const {
     register,
@@ -68,24 +83,34 @@ export default function SellerSettings() {
     formState: { errors },
   } = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
-    defaultValues: () => {
-      try {
-        const saved = localStorage.getItem('tradenest_seller_settings')
-        return saved ? { ...initialValues, ...JSON.parse(saved) } : initialValues
-      } catch {
-        return initialValues
-      }
-    },
+    defaultValues: getSavedSettings(),
   })
 
   const [updateProfile] = useUpdateProfileMutation()
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('tradenest_seller_settings')
+      if (!saved) {
+        if (sellerStatus?.storeName) {
+          setValue('storeName', sellerStatus.storeName)
+        }
+        if (user?.email) {
+          setValue('contactEmail', user.email)
+        }
+        if (user?.phone) {
+          setValue('phone', user.phone)
+        }
+      }
+    } catch {}
+  }, [user, sellerStatus, setValue])
 
   const onSubmit = async (data: SettingsForm) => {
     setIsSaving(true)
     try {
       localStorage.setItem('tradenest_seller_settings', JSON.stringify(data))
       if (data.phone) {
-        await updateProfile({ phone: data.phone.replace(/[^\d+]/g, '') }).unwrap()
+        await updateProfile({ phone: data.phone.replace(/[^\d+]/g, '') }).unwrap().catch(() => {})
       }
       toast.success('Settings saved successfully!')
     } catch {
@@ -96,7 +121,7 @@ export default function SellerSettings() {
   }
 
   return (
-    <div className="max-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Settings</h1>
         <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage your store settings and preferences.</p>
@@ -142,8 +167,8 @@ export default function SellerSettings() {
                   <div>
                     <label className="block mb-1.5 text-sm font-medium text-secondary-700 dark:text-secondary-300">Store URL</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400">tradenest.in/store/</span>
-                      <input {...register('storeUrl')} className="input pl-40" placeholder="my-awesome-store" />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400 text-sm">tradenest.in/store/</span>
+                      <input {...register('storeUrl')} className="input pl-36" placeholder="my-awesome-store" />
                     </div>
                     {errors.storeUrl && <p className="mt-1 text-sm text-red-500">{errors.storeUrl.message}</p>}
                   </div>
@@ -166,7 +191,7 @@ export default function SellerSettings() {
                       <input {...register('phone')} type="tel" className="input" placeholder="+91 98765 43210" />
                     </div>
                   </div>
-                  <div>
+                  <div className="mt-4">
                     <label className="block mb-1.5 text-sm font-medium text-secondary-700 dark:text-secondary-300">Business Address</label>
                     <textarea {...register('address')} rows={2} className="input" placeholder="Enter your business address" />
                   </div>
@@ -225,8 +250,18 @@ export default function SellerSettings() {
                 </div>
 
                 <div className="pt-6 border-t border-secondary-200 dark:border-secondary-700">
-                  <h3 className="text-lg font-semibold text-secondary-900 dark:text-secondary-50 mb-4">Password</h3>
-                  <button type="button" className="btn btn-outline">Change Password</button>
+                  <h3 className="text-lg font-semibold text-secondary-900 dark:text-secondary-50 mb-2">Password</h3>
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400 mb-4">
+                    Update your account password regularly to keep your store secure.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(true)}
+                    className="btn btn-outline flex items-center gap-2"
+                  >
+                    <Lock className="h-4 w-4" />
+                    Change Password
+                  </button>
                 </div>
               </div>
             )}
@@ -286,6 +321,95 @@ export default function SellerSettings() {
           </button>
         </div>
       </form>
+
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
+      )}
+    </div>
+  )
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changePassword, { isLoading }] = useChangePasswordMutation()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long')
+      return
+    }
+    try {
+      await changePassword({ currentPassword, newPassword }).unwrap()
+      toast.success('Password changed successfully')
+      onClose()
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Failed to change password')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="card w-full max-w-md p-6 bg-white dark:bg-secondary-900 shadow-xl border border-secondary-200 dark:border-secondary-800">
+        <div className="flex items-center justify-between pb-3 border-b border-secondary-200 dark:border-secondary-700">
+          <h3 className="text-lg font-semibold text-secondary-900 dark:text-secondary-50 flex items-center gap-2">
+            <Lock className="h-5 w-5 text-primary-600" />
+            Change Password
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">Current Password</label>
+            <input
+              type="password"
+              required
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="input w-full"
+              placeholder="Enter current password"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">New Password</label>
+            <input
+              type="password"
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="input w-full"
+              placeholder="Minimum 8 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="input w-full"
+              placeholder="Re-enter new password"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-3 border-t border-secondary-200 dark:border-secondary-700">
+            <button type="button" onClick={onClose} className="btn btn-outline btn-sm">Cancel</button>
+            <button type="submit" disabled={isLoading} className="btn btn-primary btn-sm flex items-center gap-1.5">
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update Password'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

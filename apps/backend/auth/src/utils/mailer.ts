@@ -107,3 +107,97 @@ export async function sendVerificationEmail(to: string, otp: string, firstName?:
     return { success: true, sentViaSmtp: false };
   }
 }
+
+export async function sendKycDecisionEmail(
+  to: string,
+  status: 'APPROVED' | 'REJECTED',
+  firstName?: string,
+  rejectionReason?: string
+): Promise<{ success: boolean }> {
+  const name = firstName || 'Seller';
+  const hasSmtpConfigured = !!(config.SMTP_USER || config.SMTP_HOST !== 'localhost');
+
+  const isApproved = status === 'APPROVED';
+  const subject = isApproved
+    ? '🎉 Congratulations! Your TRADENEST Seller Account is Approved'
+    : 'TRADENEST Seller Account Verification Update';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; }
+    .container { max-width: 560px; margin: 32px auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: ${isApproved ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}; padding: 32px 24px; text-align: center; color: #ffffff; }
+    .logo { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
+    .content { padding: 32px 24px; color: #334155; line-height: 1.6; }
+    .title { font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px; }
+    .box { background-color: #f8fafc; border-radius: 8px; padding: 18px 20px; margin: 20px 0; border-left: 4px solid ${isApproved ? '#10b981' : '#ef4444'}; }
+    .btn { display: inline-block; padding: 12px 28px; background-color: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 8px; margin-top: 16px; }
+    .footer { background-color: #f8fafc; padding: 16px 24px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="logo">TRADENEST</h1>
+      <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 14px;">Merchant Services</p>
+    </div>
+    <div class="content">
+      <h2 class="title">${isApproved ? 'Seller Account Approved!' : 'KYC Review Notice'}</h2>
+      <p>Hi <strong>${name}</strong>,</p>
+      ${
+        isApproved
+          ? `<p>We are delighted to inform you that your seller application and KYC credentials have been reviewed and <strong>approved</strong> by the TRADENEST administration.</p>
+             <div class="box">
+               <p style="margin: 0; font-weight: 600; color: #065f46;">Your seller store is now active! You can now access your seller dashboard, manage inventory, list new products, and start receiving customer orders.</p>
+             </div>
+             <div style="text-align: center;">
+               <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/dashboard" class="btn" style="color: #ffffff;">Go to Seller Center &rarr;</a>
+             </div>`
+          : `<p>Your seller registration and KYC documents were reviewed by our compliance team. Unfortunately, the request could not be approved at this time.</p>
+             <div class="box">
+               <p style="margin: 0 0 8px 0; font-weight: 600; color: #991b1b;">Reason for rejection:</p>
+               <p style="margin: 0; color: #475569;">${rejectionReason || 'Uploaded documentation was incomplete or invalid.'}</p>
+             </div>
+             <p>Please update your details and submit fresh documentation in your seller profile settings.</p>`
+      }
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} TRADENEST Marketplace Inc. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  const text = isApproved
+    ? `Hi ${name},\n\nCongratulations! Your TRADENEST seller account has been approved. You can now login and start listing products at: ${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/dashboard`
+    : `Hi ${name},\n\nYour TRADENEST seller application was reviewed. Status: REJECTED. Reason: ${rejectionReason || 'Documentation rejected'}`;
+
+  if (hasSmtpConfigured) {
+    try {
+      const client = getTransporter();
+      await client.sendMail({
+        from: {
+          name: 'TRADENEST Support',
+          address: config.SMTP_USER || 'noreply@tradenest.local',
+        },
+        to,
+        replyTo: config.SMTP_USER,
+        subject,
+        text,
+        html,
+      });
+      logger.info(`✅ KYC decision email sent to ${to} (${status})`);
+      return { success: true };
+    } catch (err: any) {
+      logger.warn(`Failed to send KYC email to ${to}: ${err?.message}`);
+      return { success: false };
+    }
+  }
+  return { success: true };
+}

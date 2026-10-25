@@ -47,6 +47,7 @@ export default function KycApprovals() {
     try {
       await updateKyc({ sellerId, status: 'APPROVED' }).unwrap()
       toast.success('Seller KYC approved successfully')
+      refetch()
     } catch {
       toast.error('Failed to approve seller KYC')
     }
@@ -72,6 +73,7 @@ export default function KycApprovals() {
         rejectionReason: rejectionReason.trim(),
       }).unwrap()
       toast.success('Seller KYC rejected and reason logged')
+      refetch()
       setRejectModalOpen(false)
       setSelectedSellerId(null)
     } catch {

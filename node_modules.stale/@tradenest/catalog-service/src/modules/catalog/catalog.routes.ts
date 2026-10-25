@@ -22,25 +22,72 @@ router.get('/', asyncHandler(async (req, res) => {
   const query = ProductQuerySchema.parse(req.query);
   const { page, limit, sort, order, q, categoryId, sellerId, brand, subcategory, minPrice, maxPrice, rating, minDiscount, status, inStock } = query;
 
+  const userRole = req.headers['x-user-role'] as string | undefined;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const isSellerSelfQuery = sellerId === 'me';
+
   const where: any = {};
   if (q) where.OR = [{ title: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
   if (categoryId) where.categoryId = categoryId;
   
-  // Handle 'me' sellerId - replace with authenticated user's seller ID
-  let actualSellerId = sellerId;
-  if (sellerId === 'me') {
-    actualSellerId = req.headers['x-user-id'] as string;
+  if (isSellerSelfQuery) {
+    // Authenticated seller viewing their own inventory
+    const userId = req.headers['x-user-id'] as string;
+    if (userId) {
+      const sellerRec = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Seller" WHERE "userId" = ${userId} OR id = ${userId} LIMIT 1
+      `.catch(() => []);
+      if (sellerRec.length > 0) {
+        where.sellerId = { in: [sellerRec[0].id, userId] };
+      } else {
+        where.sellerId = userId;
+      }
+    }
+    if (status) where.status = status;
+  } else if (isAdmin) {
+    // Admin product moderation / management: can see products across all statuses and sellers
+    if (sellerId) {
+      const targetSeller = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Seller" WHERE "userId" = ${sellerId} OR id = ${sellerId} LIMIT 1
+      `.catch(() => []);
+      where.sellerId = targetSeller.length > 0 ? targetSeller[0].id : sellerId;
+    }
+    if (status) where.status = status;
+  } else {
+    // Marketplace customer browsing:
+    // MUST ONLY show ACTIVE products from sellers with APPROVED KYC status!
+    where.status = ProductStatus.ACTIVE;
+
+    const approvedSellers = await prisma.$queryRaw<Array<{ id: string; userId: string }>>`
+      SELECT id, "userId" FROM "Seller" WHERE "kycStatus" = 'APPROVED'
+    `.catch(() => []);
+
+    const approvedSellerIds = Array.from(new Set(approvedSellers.flatMap((s) => [s.id, s.userId])));
+    if (approvedSellerIds.length === 0) {
+      return res.json({
+        data: [],
+        meta: { page, limit, total: 0, totalPages: 0 },
+      });
+    }
+
+    if (sellerId) {
+      if (!approvedSellerIds.includes(sellerId)) {
+        return res.json({
+          data: [],
+          meta: { page, limit, total: 0, totalPages: 0 },
+        });
+      }
+      where.sellerId = sellerId;
+    } else {
+      where.sellerId = { in: approvedSellerIds };
+    }
   }
-  if (actualSellerId) where.sellerId = actualSellerId;
-  
+
   if (brand) where.brand = { contains: brand, mode: 'insensitive' };
   if (subcategory) where.subcategory = { contains: subcategory, mode: 'insensitive' };
   if (minPrice || maxPrice) where.price = { ...(minPrice && { gte: minPrice }), ...(maxPrice && { lte: maxPrice }) };
   if (rating) where.ratingAvg = { gte: rating };
   if (minDiscount !== undefined) where.discountPercent = { gte: minDiscount };
-  if (status) where.status = status;
-  else where.status = ProductStatus.ACTIVE;
-
   if (inStock) {
     where.inventory = { quantity: { gt: 0 } };
   }
@@ -51,7 +98,10 @@ router.get('/', asyncHandler(async (req, res) => {
   const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      include: { category: { select: { id: true, name: true, slug: true } }, inventory: true },
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        inventory: true,
+      },
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
@@ -76,7 +126,33 @@ router.get('/:id', asyncHandler(async (req, res) => {
     },
   });
   if (!product) throw new NotFoundError('Product');
-  res.json(product);
+
+  const userId = req.headers['x-user-id'] as string | undefined;
+  const userRole = req.headers['x-user-role'] as string | undefined;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  // Check seller's KYC status from Seller table
+  const sellerRows = await prisma.$queryRaw<Array<{ id: string; userId: string; storeName: string; kycStatus: string }>>`
+    SELECT id, "userId", "storeName", "kycStatus" FROM "Seller" 
+    WHERE id = ${product.sellerId} OR "userId" = ${product.sellerId}
+    LIMIT 1
+  `.catch(() => []);
+  const seller = sellerRows[0];
+
+  const isOwner = userId && (product.sellerId === userId || seller?.userId === userId || seller?.id === userId);
+
+  // If requester is NOT an admin and NOT the product owner:
+  // Product MUST be ACTIVE and the seller's KYC MUST be APPROVED!
+  if (!isAdmin && !isOwner) {
+    if (product.status !== ProductStatus.ACTIVE || !seller || seller.kycStatus !== 'APPROVED') {
+      throw new NotFoundError('Product');
+    }
+  }
+
+  res.json({
+    ...product,
+    seller: seller ? { id: seller.id, storeName: seller.storeName, kycStatus: seller.kycStatus } : null,
+  });
 }));
 
 // GET /api/products/:id/reviews - Get product reviews
@@ -180,17 +256,39 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
     throw new ValidationError('Authentication required', { sellerId: ['Seller ID not found in request'] });
   }
 
-  // Ensure seller record exists in the shared Seller table (managed by order service)
-  // First check if seller exists for this userId
-  const existingSeller = await prisma.$queryRaw`SELECT id FROM "Seller" WHERE "userId" = ${sellerId} LIMIT 1` as Array<{id: string}>;
-  let actualSellerId: string;
+  // Look up seller record
+  const existingSellers = await prisma.$queryRaw<Array<{ id: string; kycStatus: string; kycRejectionReason: string | null }>>`
+    SELECT id, "kycStatus", "kycRejectionReason" 
+    FROM "Seller" 
+    WHERE "userId" = ${sellerId} OR "id" = ${sellerId} 
+    LIMIT 1
+  `;
   
-  if (existingSeller.length > 0) {
-    actualSellerId = existingSeller[0].id;
+  let actualSeller: { id: string; kycStatus: string; kycRejectionReason: string | null };
+  
+  if (existingSellers.length > 0) {
+    actualSeller = existingSellers[0];
   } else {
-    // Create new seller record with id = userId
-    await prisma.$executeRaw`INSERT INTO "Seller" (id, "userId", "storeName", "kycStatus", "totalRevenue", "totalOrders", "createdAt", "updatedAt") VALUES (${sellerId}, ${sellerId}, ${`Store ${sellerId.slice(0, 8)}`}, 'PENDING', 0, 0, NOW(), NOW())`;
-    actualSellerId = sellerId;
+    // Create new seller record with kycStatus = 'PENDING'
+    await prisma.$executeRaw`
+      INSERT INTO "Seller" (id, "userId", "storeName", "kycStatus", "totalRevenue", "totalOrders", "createdAt", "updatedAt") 
+      VALUES (${sellerId}, ${sellerId}, ${`Store ${sellerId.slice(0, 8)}`}, 'PENDING'::"KYCStatus", 0, 0, NOW(), NOW())
+      ON CONFLICT ("userId") DO NOTHING
+    `;
+    actualSeller = { id: sellerId, kycStatus: 'PENDING', kycRejectionReason: null };
+  }
+
+  // STRICT KYC CHECK: Sellers must have APPROVED status to publish products
+  if (actualSeller.kycStatus === 'REJECTED') {
+    throw new ValidationError(
+      `Your seller KYC verification has been REJECTED by administrator${actualSeller.kycRejectionReason ? `: ${actualSeller.kycRejectionReason}` : ''}. You cannot publish or create products.`
+    );
+  }
+
+  if (actualSeller.kycStatus !== 'APPROVED') {
+    throw new ValidationError(
+      'Your seller account KYC verification is currently PENDING approval. You cannot publish or create products until your account is approved by an administrator.'
+    );
   }
 
   const { stockQuantity, ...data } = CreateProductDtoSchema.parse(req.body);
@@ -205,12 +303,12 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
   const product = await prisma.product.create({
     data: {
       ...data,
-      sellerId: actualSellerId,
+      sellerId: actualSeller.id,
       slug,
       status: ProductStatus.ACTIVE,
       inventory: {
         create: {
-          sellerId: actualSellerId,
+          sellerId: actualSeller.id,
           quantity: stockQuantity ?? 1,
           reserved: 0,
           lowStockThreshold: 5,
@@ -224,18 +322,48 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
 
 // PATCH /api/products/:id - Update product
 router.patch('/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { stockQuantity, ...data } = UpdateProductDtoSchema.parse(req.body);
-  const existingProduct = stockQuantity === undefined
-    ? null
-    : await prisma.product.findUnique({
-        where: { id: req.params.id },
-        include: { inventory: true },
-      });
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
-  if (stockQuantity !== undefined && !existingProduct) throw new NotFoundError('Product');
+  const existingProduct = await prisma.product.findUnique({
+    where: { id: req.params.id },
+    include: { inventory: true },
+  });
+
+  if (!existingProduct) throw new NotFoundError('Product');
+
+  if (!isAdmin) {
+    const sellerRows = await prisma.$queryRaw<Array<{ id: string; userId: string; kycStatus: string; kycRejectionReason: string | null }>>`
+      SELECT id, "userId", "kycStatus", "kycRejectionReason" FROM "Seller" 
+      WHERE id = ${existingProduct.sellerId} OR "userId" = ${existingProduct.sellerId}
+      LIMIT 1
+    `.catch(() => []);
+    const seller = sellerRows[0];
+
+    const isOwner = existingProduct.sellerId === userId || seller?.userId === userId || seller?.id === userId;
+    if (!isOwner) {
+      throw new ValidationError('You can only update your own products');
+    }
+
+    if (seller?.kycStatus === 'REJECTED') {
+      throw new ValidationError(
+        `Your seller KYC verification has been REJECTED${seller.kycRejectionReason ? `: ${seller.kycRejectionReason}` : ''}. You cannot modify or publish products.`
+      );
+    }
+
+    if (!seller || seller.kycStatus !== 'APPROVED') {
+      throw new ValidationError(
+        'Your seller account KYC is PENDING approval. You cannot modify or publish products until approved.'
+      );
+    }
+  }
+
+  const { stockQuantity, ...data } = UpdateProductDtoSchema.parse(req.body);
+
   if (
     stockQuantity !== undefined &&
-    existingProduct?.inventory &&
+    existingProduct.inventory &&
     stockQuantity < existingProduct.inventory.reserved
   ) {
     throw new ValidationError('Stock quantity cannot be less than reserved stock');
@@ -245,7 +373,7 @@ router.patch('/:id', authMiddleware, asyncHandler(async (req, res) => {
     where: { id: req.params.id },
     data: {
       ...data,
-      ...(stockQuantity !== undefined && existingProduct
+      ...(stockQuantity !== undefined
         ? {
             inventory: {
               upsert: {
@@ -288,6 +416,30 @@ router.patch('/:id/approve', authMiddleware, asyncHandler(async (req, res) => {
 
 // DELETE /api/products/:id - Delete product
 router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  const existingProduct = await prisma.product.findUnique({
+    where: { id: req.params.id },
+  });
+
+  if (!existingProduct) throw new NotFoundError('Product');
+
+  if (!isAdmin) {
+    const sellerRows = await prisma.$queryRaw<Array<{ id: string; userId: string }>>`
+      SELECT id, "userId" FROM "Seller" 
+      WHERE id = ${existingProduct.sellerId} OR "userId" = ${existingProduct.sellerId}
+      LIMIT 1
+    `.catch(() => []);
+    const seller = sellerRows[0];
+
+    const isOwner = existingProduct.sellerId === userId || seller?.userId === userId || seller?.id === userId;
+    if (!isOwner) {
+      throw new ValidationError('You can only delete your own products');
+    }
+  }
+
   await prisma.product.delete({ where: { id: req.params.id } });
   res.json({ message: 'Product deleted' });
 }));

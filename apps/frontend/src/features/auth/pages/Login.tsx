@@ -19,6 +19,26 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>
 
+function getRoleSafeRedirect(role: string, from?: { pathname?: string; search?: string; hash?: string }): string {
+  const query = `${from?.search ?? ''}${from?.hash ?? ''}`
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+    if (from?.pathname && from.pathname.startsWith('/admin')) {
+      return `${from.pathname}${query}`
+    }
+    return '/admin/dashboard'
+  }
+  if (role === 'SELLER') {
+    if (from?.pathname && from.pathname.startsWith('/seller')) {
+      return `${from.pathname}${query}`
+    }
+    return '/seller/dashboard'
+  }
+  if (from?.pathname && !from.pathname.startsWith('/admin') && !from.pathname.startsWith('/seller') && from.pathname !== '/login') {
+    return `${from.pathname}${query}`
+  }
+  return '/'
+}
+
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -75,16 +95,9 @@ export default function Login() {
       
       toast.success('Welcome back!')
       
-      // Redirect based on user role
-      const redirectPath =
-        payload.role === 'ADMIN' || payload.role === 'SUPER_ADMIN'
-          ? '/admin/dashboard'
-          : payload.role === 'SELLER'
-          ? '/seller/dashboard'
-          : '/'
       const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
-      const finalPath = from?.pathname ?? redirectPath
-      navigate(`${finalPath}${from?.search ?? ''}${from?.hash ?? ''}`, { replace: true })
+      const safePath = getRoleSafeRedirect(payload.role, from)
+      navigate(safePath, { replace: true })
     } catch (error) {
       dispatch(logout())
       dispatch(api.util.resetApiState())
@@ -137,12 +150,8 @@ export default function Login() {
       dispatch(api.util.resetApiState())
       toast.success(`Welcome back, ${res.user.firstName || 'User'}!`)
       const from = location.state?.from as { pathname?: string; search?: string; hash?: string } | undefined
-      const redirectPath = res.user.role === 'ADMIN' || res.user.role === 'SUPER_ADMIN'
-        ? '/admin/dashboard'
-        : res.user.role === 'SELLER'
-        ? '/seller/dashboard'
-        : (from?.pathname || '/')
-      navigate(redirectPath, { replace: true })
+      const safePath = getRoleSafeRedirect(res.user.role, from)
+      navigate(safePath, { replace: true })
     } catch (error: any) {
       const message = error?.data?.message || 'Google authentication failed'
       toast.error(message)

@@ -149,6 +149,22 @@ export default function Layout() {
 
               {isAuthenticated ? (
                 <div className="flex items-center gap-3">
+                  {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                    <Link
+                      to="/admin/dashboard"
+                      className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition-colors"
+                    >
+                      Admin Portal
+                    </Link>
+                  )}
+                  {user?.role === 'SELLER' && (
+                    <Link
+                      to="/seller/dashboard"
+                      className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 shadow-xs transition-colors"
+                    >
+                      Seller Center
+                    </Link>
+                  )}
                   <Link to="/profile" className="flex items-center gap-2 text-sm font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-600">
                     <User className="h-5 w-5" />
                     <span className="hidden sm:inline">{user?.firstName}</span>
@@ -188,6 +204,12 @@ export default function Layout() {
                 <>
                   <Link to="/cart" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Cart ({cartCount})</Link>
                   <Link to="/wishlist" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Wishlist ({wishlistCount})</Link>
+                  {isAuthenticated && (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                    <Link to="/admin/dashboard" className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Admin Portal</Link>
+                  )}
+                  {isAuthenticated && user?.role === 'SELLER' && (
+                    <Link to="/seller/dashboard" className="text-sm font-semibold text-primary-600 dark:text-primary-400">Seller Center</Link>
+                  )}
                   {isAuthenticated && (
                     <Link to="/profile" className="text-sm font-medium text-secondary-600 dark:text-secondary-300">Profile</Link>
                   )}

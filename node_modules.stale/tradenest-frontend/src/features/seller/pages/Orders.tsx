@@ -25,7 +25,7 @@ const paymentStyles: Record<string, string> = {
 
 const statusActions: Record<string, { label: string; nextStatus: string; icon: React.ReactNode }[]> = {
   PENDING: [
-    { label: 'Confirm', nextStatus: 'CONFIRMED', icon: <CheckCircle className="h-4 w-4 text-blue-600" /> },
+    { label: 'Approve Order', nextStatus: 'CONFIRMED', icon: <CheckCircle className="h-4 w-4 text-emerald-600" /> },
     { label: 'Cancel', nextStatus: 'CANCELLED', icon: <XCircle className="h-4 w-4 text-red-600" /> },
   ],
   CONFIRMED: [
@@ -64,7 +64,7 @@ export default function SellerOrders() {
   const handleStatusChange = async (orderId: string, nextStatus: string, label: string) => {
     try {
       await updateOrderStatus({ orderId, status: nextStatus }).unwrap()
-      toast.success(`Order status updated to ${label}`)
+      toast.success(nextStatus === 'CONFIRMED' ? 'Order approved successfully! Customer notified.' : `Order status updated to ${label}`)
       refetch()
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev: any) => prev ? { ...prev, status: nextStatus } : null)

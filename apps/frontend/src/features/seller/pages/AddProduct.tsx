@@ -1,11 +1,11 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Camera, Loader2, Save, ArrowLeft } from 'lucide-react'
+import { X, Camera, Loader2, Save, ArrowLeft, AlertTriangle, AlertCircle } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUploadProductImageMutation } from '../../../app/api'
+import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUploadProductImageMutation, useGetMySellerStatusQuery } from '../../../app/api'
 
 const productSchema = z.object({
   title: z.string().min(3, 'Product name must be at least 3 characters'),
@@ -49,9 +49,14 @@ export default function AddProduct() {
 
   const { data: categoriesData, isLoading: categoriesLoading } = useGetCategoriesQuery()
   const { data: productData, isLoading: productLoading } = useGetProductQuery(params.id || '', { skip: !isEditing })
+  const { data: sellerStatus, isLoading: isSellerStatusLoading } = useGetMySellerStatusQuery()
   const [createProduct] = useCreateProductMutation()
   const [updateProduct] = useUpdateProductMutation()
   const [uploadProductImage] = useUploadProductImageMutation()
+
+  const isKycApproved = sellerStatus?.kycStatus === 'APPROVED'
+  const isKycRejected = sellerStatus?.kycStatus === 'REJECTED'
+  const isKycPending = sellerStatus?.kycStatus === 'PENDING'
 
   const {
     register,
@@ -120,6 +125,15 @@ export default function AddProduct() {
   }
 
   const onSubmit = async (data: ProductForm) => {
+    if (!isKycApproved) {
+      if (isKycRejected) {
+        toast.error(`Cannot publish: Seller KYC is REJECTED (${sellerStatus?.kycRejectionReason || 'Documents rejected'})`)
+      } else {
+        toast.error('Cannot publish: Seller KYC verification is currently pending approval')
+      }
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const payload = {
@@ -172,9 +186,46 @@ export default function AddProduct() {
         </div>
       </div>
 
-      {(categoriesLoading || productLoading) && (
+      {(categoriesLoading || productLoading || isSellerStatusLoading) && (
         <div className="card p-8 text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto" />
+        </div>
+      )}
+
+      {isKycRejected && (
+        <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 text-red-800 dark:text-red-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-red-900 dark:text-red-200">KYC Status: Rejected</h3>
+              <p className="text-sm mt-1">
+                Your seller KYC verification was rejected by administration.
+                {sellerStatus?.kycRejectionReason && (
+                  <span className="font-medium"> Reason: {sellerStatus.kycRejectionReason}</span>
+                )}
+              </p>
+              <p className="text-xs mt-1 text-red-700 dark:text-red-400">
+                You cannot add or publish products until your account KYC is reviewed and approved by Superadmin.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isKycPending && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-amber-900 dark:text-amber-200">KYC Status: Pending Verification</h3>
+              <p className="text-sm mt-1">
+                Your seller application is currently pending review by platform administrators.
+              </p>
+              <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
+                You will be able to create and publish products once your KYC verification is approved.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -353,11 +404,21 @@ export default function AddProduct() {
         {/* Actions */}
         <div className="flex items-center justify-end gap-4 pt-4 border-t border-secondary-200 dark:border-secondary-700">
           <button type="button" onClick={() => navigate('/seller/inventory')} className="btn btn-outline">Cancel</button>
-          <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+          <button
+            type="submit"
+            disabled={isSubmitting || !isKycApproved}
+            title={!isKycApproved ? (isKycRejected ? 'Publishing blocked: KYC Rejected' : 'Publishing blocked: KYC Pending') : ''}
+            className={clsx('btn btn-primary', !isKycApproved && 'opacity-60 cursor-not-allowed')}
+          >
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {isEditing ? 'Updating...' : 'Creating...'}
+              </>
+            ) : !isKycApproved ? (
+              <>
+                <X className="mr-2 h-4 w-4" />
+                {isKycRejected ? 'KYC Rejected - Cannot Publish' : 'KYC Pending Approval'}
               </>
             ) : (
               <>

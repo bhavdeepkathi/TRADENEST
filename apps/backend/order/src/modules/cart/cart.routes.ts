@@ -51,7 +51,16 @@ router.post('/items', asyncHandler(async (req, res) => {
   }
 
   const product = await prisma.product.findUnique({ where: { id: productId }, include: { inventory: true } });
-  if (!product || product.status !== 'ACTIVE') throw new ValidationError('Product is not available');
+  if (!product || product.status !== 'ACTIVE') {
+    throw new ValidationError('Product is not available for purchase');
+  }
+
+  const sellerKyc = await prisma.$queryRaw<Array<{ kycStatus: string }>>`
+    SELECT "kycStatus" FROM "Seller" WHERE id = ${product.sellerId} OR "userId" = ${product.sellerId} LIMIT 1
+  `.catch(() => []);
+  if (sellerKyc.length > 0 && sellerKyc[0].kycStatus !== 'APPROVED') {
+    throw new ValidationError('Product is not available for purchase (seller not approved)');
+  }
 
   const cart = await prisma.cart.upsert({ where: { userId: id }, update: {}, create: { userId: id } });
   const existingItem = await prisma.cartItem.findUnique({

@@ -1,5 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, CheckCheck, Bell, ShoppingBag, ShieldCheck, AlertCircle, Wallet, Info } from 'lucide-react'
+import { X, CheckCheck, Bell, ShoppingBag, ShieldCheck, AlertCircle, Wallet, Info, UserCheck, PackageCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useAppSelector } from '../app/hooks'
 import {
   useGetNotificationsQuery,
   useMarkNotificationReadMutation,
@@ -14,6 +16,8 @@ interface NotificationDrawerProps {
 }
 
 export default function NotificationDrawer({ isOpen, onClose }: NotificationDrawerProps) {
+  const navigate = useNavigate()
+  const { user } = useAppSelector((state) => state.auth)
   const { data, isLoading } = useGetNotificationsQuery(
     { page: 1, limit: 30 },
     { skip: !isOpen, pollingInterval: isOpen ? 10000 : 0 }
@@ -33,18 +37,46 @@ export default function NotificationDrawer({ isOpen, onClose }: NotificationDraw
     }
   }
 
-  const handleItemClick = async (id: string, read: boolean) => {
-    if (!read) {
+  const handleItemClick = async (item: any) => {
+    if (!item.read) {
       try {
-        await markRead(id).unwrap()
+        await markRead(item.id).unwrap()
       } catch (e) {
         console.error(e)
       }
     }
+
+    const data = typeof item.data === 'string' ? JSON.parse(item.data) : item.data
+    if (data?.type === 'SELLER_REGISTRATION' || item.title?.toLowerCase().includes('seller')) {
+      if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
+        navigate('/admin/sellers')
+        onClose()
+        return
+      }
+    }
+
+    if (data?.orderId || item.title?.toLowerCase().includes('order')) {
+      const orderId = data?.orderId
+      if (user?.role === 'SELLER') {
+        navigate(orderId ? `/seller/orders?search=${orderId}` : '/seller/orders')
+      } else {
+        navigate(orderId ? `/orders/${orderId}` : '/orders')
+      }
+      onClose()
+      return
+    }
   }
 
-  const getIconForType = (type: string) => {
+  const getIconForType = (type: string, title?: string) => {
+    const t = (title || '').toLowerCase()
+    if (t.includes('seller') || type === 'KYC_APPROVED' || type === 'KYC_REJECTED') {
+      return <UserCheck className="h-4 w-4 text-indigo-500" />
+    }
+    if (t.includes('approved') || t.includes('delivered')) {
+      return <PackageCheck className="h-4 w-4 text-emerald-500" />
+    }
     switch (type) {
+      case 'ORDER':
       case 'ORDER_STATUS_CHANGED':
       case 'ORDER_CONFIRMED':
       case 'ORDER_SHIPPED':
@@ -55,6 +87,7 @@ export default function NotificationDrawer({ isOpen, onClose }: NotificationDraw
         return <ShieldCheck className="h-4 w-4 text-indigo-500" />
       case 'WALLET_TOPUP':
       case 'WALLET_DEBIT':
+      case 'PAYMENT':
         return <Wallet className="h-4 w-4 text-amber-500" />
       case 'ALERT':
       case 'SECURITY_ALERT':
@@ -135,7 +168,7 @@ export default function NotificationDrawer({ isOpen, onClose }: NotificationDraw
                   notifications.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => handleItemClick(item.id, item.read)}
+                      onClick={() => handleItemClick(item)}
                       className={`p-3.5 rounded-lg transition-colors cursor-pointer text-left ${
                         item.read
                           ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40 opacity-75'
@@ -144,7 +177,7 @@ export default function NotificationDrawer({ isOpen, onClose }: NotificationDraw
                     >
                       <div className="flex items-start gap-3">
                         <div className="p-2 rounded-lg bg-white dark:bg-slate-800 shadow-xs border border-slate-200/60 dark:border-slate-700/60 mt-0.5">
-                          {getIconForType(item.type)}
+                          {getIconForType(item.type, item.title)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">

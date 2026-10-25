@@ -32,13 +32,33 @@ export function ProtectedRoute() {
 }
 
 export function GuestRoute() {
-  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated)
+  const { isAuthenticated, user } = useAppSelector((state) => state.auth)
 
-  return isAuthenticated ? <Navigate to="/" replace /> : <Outlet />
+  if (isAuthenticated) {
+    if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
+      return <Navigate to="/admin/dashboard" replace />
+    }
+    if (user?.role === 'SELLER') {
+      return <Navigate to="/seller/dashboard" replace />
+    }
+    return <Navigate to="/" replace />
+  }
+
+  return <Outlet />
 }
 
 export function AdminRoute() {
-  const { user } = useAppSelector((state) => state.auth)
+  const { user, loading, isAuthenticated } = useAppSelector((state) => state.auth)
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      </div>
+    )
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
   return isAdmin ? <Outlet /> : <Navigate to="/" replace />
 }
