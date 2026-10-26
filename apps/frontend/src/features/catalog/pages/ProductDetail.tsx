@@ -1,17 +1,18 @@
 import { motion } from 'framer-motion'
-import { useParams, Link } from 'react-router-dom'
-import { Star, Truck, Shield, RotateCcw, Heart, ShoppingCart, Minus, Plus, Share2, X, Loader2 } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { Star, Truck, Shield, RotateCcw, Heart, ShoppingCart, Minus, Plus, Share2, X, Loader2, Zap, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
-import { useAddToCartMutation, useGetProductQuery, useGetProductReviewsQuery, useCreateProductReviewMutation } from '../../../app/api'
+import { useAddToCartMutation, useGetProductQuery, useGetProductReviewsQuery, useCreateProductReviewMutation, useGetRecommendationsQuery } from '../../../app/api'
 import { getApiErrorMessage } from '../../../app/apiError'
 
 export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>()
+  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const cartItems = useAppSelector((s) => s.cart.items)
   const wishlistIds = useAppSelector((s) => s.wishlist.productIds)
@@ -25,6 +26,10 @@ export default function ProductDetail() {
   const [reviewHoverRating, setReviewHoverRating] = useState(0)
   const [reviewTitle, setReviewTitle] = useState('')
   const [reviewBody, setReviewBody] = useState('')
+
+  // Reseller state
+  const [showResellModal, setShowResellModal] = useState(false)
+  const [customResalePrice, setCustomResalePrice] = useState<number | ''>('')
   
   // The catalog endpoint accepts both the product ID and its unique slug.
   const { data: product, isLoading, error } = useGetProductQuery(slug || '', { 
@@ -33,6 +38,10 @@ export default function ProductDetail() {
   const { data: reviewsData } = useGetProductReviewsQuery(product?.id || '', {
     skip: !product?.id,
   })
+  const { data: recommendations = [], isLoading: isLoadingRecs } = useGetRecommendationsQuery(
+    { productId: product?.id, categoryId: product?.category?.id || (product as any)?.categoryId, limit: 4 },
+    { skip: !product?.id }
+  )
   const [createProductReview, { isLoading: isSubmittingReview }] = useCreateProductReviewMutation()
   const errorStatus = error && 'status' in error ? error.status : undefined
 
@@ -57,6 +66,23 @@ export default function ProductDetail() {
       dispatch(addItem({ productId: product.id, quantity }))
       toast.success('Added to cart')
     }
+  }
+
+  const handleBuyNow = async () => {
+    if (!product) return
+    if (availableQuantity === 0) {
+      toast.error('This product is out of stock')
+      return
+    }
+    if (accessToken) {
+      try {
+        await addToCart({ productId: product.id, quantity }).unwrap()
+      } catch (error) {
+        // Continue to checkout with local cart
+      }
+    }
+    dispatch(addItem({ productId: product.id, quantity }))
+    navigate('/checkout')
   }
 
   const handleToggleWishlist = () => {
@@ -167,13 +193,16 @@ export default function ProductDetail() {
               </span>
             </div>
 
-            <div className="mb-6 flex items-baseline gap-3">
+            <div className="mb-6 flex flex-wrap items-baseline gap-3">
               <span className="text-3xl font-bold text-secondary-900 dark:text-secondary-50">₹{Number(product.price).toLocaleString()}</span>
               {product.mrp && Number(product.mrp) > Number(product.price) && (
                 <>
                   <span className="line-through text-xl text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
-                  <span className="px-2 py-0.5 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  <span className="px-2.5 py-0.5 rounded-full text-sm font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     {Math.round(((Number(product.mrp) - Number(product.price)) / Number(product.mrp)) * 100)}% OFF
+                  </span>
+                  <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    Save ₹{(Number(product.mrp) - Number(product.price)).toLocaleString()}
                   </span>
                 </>
               )}
@@ -224,26 +253,55 @@ export default function ProductDetail() {
               </div>
             </div>
 
-            <div className="mb-6 flex flex-wrap gap-4">
+            <div className="mb-6 flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleAddToCart}
                 disabled={availableQuantity === 0}
-                className="btn btn-primary flex-1 min-w-[200px] flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn btn-outline flex-1 min-w-[160px] py-3 text-base flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ShoppingCart className="h-5 w-5" />
                 {availableQuantity === 0 ? 'Out of Stock' : inCart ? 'Update Cart' : 'Add to Cart'}
               </button>
               <button
-                onClick={handleToggleWishlist}
-                className={clsx('btn flex-1 min-w-[200px] flex items-center justify-center gap-2', isInWishlist ? 'btn-primary' : 'btn-outline')}
+                onClick={handleBuyNow}
+                disabled={availableQuantity === 0}
+                className="btn btn-primary flex-1 min-w-[160px] py-3 text-base flex items-center justify-center gap-2 font-bold shadow-lg shadow-primary-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Heart className={clsx('h-5 w-5', isInWishlist ? 'fill-current' : '')} />
-                {isInWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
+                <Zap className="h-5 w-5 fill-current" />
+                Buy Now
               </button>
             </div>
 
-            <div className="mb-6 flex items-center gap-4">
-              <button className="btn btn-outline flex items-center gap-2">
+            <div className="mb-6 flex flex-wrap gap-3">
+              <button
+                onClick={() => {
+                  setCustomResalePrice(Math.round(Number(product.price) * 1.3))
+                  setShowResellModal(true)
+                }}
+                className="btn border border-emerald-500 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-600 flex-1 min-w-[200px] flex items-center justify-center gap-2 font-medium"
+              >
+                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                💼 Resell & Earn Margin
+              </button>
+              <button
+                onClick={handleToggleWishlist}
+                className={clsx('btn flex-1 min-w-[160px] flex items-center justify-center gap-2', isInWishlist ? 'btn-primary' : 'btn-outline')}
+              >
+                <Heart className={clsx('h-5 w-5', isInWishlist ? 'fill-current' : '')} />
+                {isInWishlist ? 'In Wishlist' : 'Wishlist'}
+              </button>
+              <button
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({ title: product.title, url: window.location.href }).catch(() => {})
+                  } else {
+                    navigator.clipboard.writeText(window.location.href)
+                    toast.success('Product link copied to clipboard')
+                  }
+                }}
+                className="btn btn-outline flex items-center justify-center gap-2"
+                title="Share product"
+              >
                 <Share2 className="h-5 w-5" />
                 Share
               </button>
@@ -280,6 +338,86 @@ export default function ProductDetail() {
             </div>
           </div>
         </motion.div>
+
+        {/* ✨ AI Recommended Similar Products Section */}
+        {recommendations.length > 0 && (
+          <section className="mt-12 border-t border-secondary-200 pt-10 dark:border-secondary-700">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                    <Sparkles className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" />
+                    AI Recommendations
+                  </span>
+                  <h2 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">
+                    Similar Products You May Like
+                  </h2>
+                </div>
+                <p className="text-sm text-secondary-500 mt-1">
+                  Customers who viewed this item also explored these related picks
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {recommendations.map((rec) => {
+                const recDiscount = rec.mrp && Number(rec.mrp) > Number(rec.price)
+                  ? Math.round(((Number(rec.mrp) - Number(rec.price)) / Number(rec.mrp)) * 100)
+                  : 0
+                return (
+                  <Link
+                    key={rec.id}
+                    to={`/product/${rec.slug}`}
+                    className="card group overflow-hidden flex flex-col hover:shadow-lg transition-all border border-secondary-200 dark:border-secondary-800 bg-white dark:bg-secondary-800/60"
+                  >
+                    <div className="aspect-square relative overflow-hidden bg-secondary-100 dark:bg-secondary-800">
+                      <img
+                        src={rec.images?.[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop'}
+                        alt={rec.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      {recDiscount > 0 && (
+                        <span className="absolute top-2 left-2 rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white shadow">
+                          {recDiscount}% OFF
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-2">
+                      <div>
+                        {rec.category && (
+                          <span className="text-xs text-primary-600 font-medium">
+                            {rec.category.name}
+                          </span>
+                        )}
+                        <h3 className="font-semibold text-secondary-900 dark:text-secondary-100 text-sm line-clamp-2 group-hover:text-primary-600 transition-colors">
+                          {rec.title}
+                        </h3>
+                      </div>
+                      <div className="pt-2">
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-bold text-base text-secondary-900 dark:text-secondary-50">
+                            ₹{Number(rec.price).toLocaleString()}
+                          </span>
+                          {rec.mrp && Number(rec.mrp) > Number(rec.price) && (
+                            <span className="line-through text-xs text-secondary-400">
+                              ₹{Number(rec.mrp).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        {rec.ratingAvg != null && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-secondary-500">
+                            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                            <span>{Number(rec.ratingAvg).toFixed(1)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Customer Reviews Section */}
         <section className="mt-12 border-t border-secondary-200 pt-10 dark:border-secondary-700">
@@ -506,6 +644,145 @@ export default function ProductDetail() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Reseller Modal */}
+        {showResellModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="card w-full max-w-lg p-6 space-y-5 bg-white dark:bg-secondary-900 shadow-2xl border border-secondary-200 dark:border-secondary-700">
+              <div className="flex items-center justify-between border-b border-secondary-200 dark:border-secondary-700 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-50">
+                      Resell & Earn Margin
+                    </h3>
+                    <p className="text-xs text-secondary-500">Sell at your chosen price. We deliver directly to your customer.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowResellModal(false)}
+                  className="p-1 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 text-secondary-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg bg-secondary-50 dark:bg-secondary-800/60 border border-secondary-200 dark:border-secondary-700 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={product.images[0] || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=100&h=100&fit=crop'}
+                      alt=""
+                      className="w-12 h-12 rounded object-cover"
+                    />
+                    <div>
+                      <p className="font-semibold text-sm text-secondary-900 dark:text-secondary-100 line-clamp-1">{product.title}</p>
+                      <p className="text-xs text-secondary-500">Quantity: {quantity} unit(s)</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-secondary-500">Platform Cost</p>
+                    <p className="font-bold text-secondary-900 dark:text-secondary-100">₹{Number(product.price).toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-secondary-800 dark:text-secondary-200">
+                    Set Customer Bill / Selling Price (per unit)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary-500 font-bold">₹</span>
+                    <input
+                      type="number"
+                      min={Number(product.price)}
+                      value={customResalePrice}
+                      onChange={(e) => setCustomResalePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder={`e.g. ${Math.round(Number(product.price) * 1.35)}`}
+                      className="w-full rounded-lg border border-secondary-300 bg-white pl-8 pr-4 py-2.5 text-base font-semibold text-secondary-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none dark:border-secondary-600 dark:bg-secondary-800 dark:text-secondary-100"
+                    />
+                  </div>
+                  <p className="text-xs text-secondary-500">
+                    Minimum recommended price: ₹{Number(product.price).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Profit Margin Preview Box */}
+                {customResalePrice !== '' && Number(customResalePrice) >= Number(product.price) ? (
+                  <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 p-4 dark:from-emerald-950/30 dark:to-teal-950/30 dark:border-emerald-800 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-800 dark:text-emerald-300 font-medium">Customer Bill Amount:</span>
+                      <span className="font-bold text-emerald-950 dark:text-emerald-100">₹{(Number(customResalePrice) * quantity).toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-800 dark:text-emerald-300 font-medium">Platform Cost (You pay):</span>
+                      <span className="font-medium text-secondary-600 dark:text-secondary-400">₹{(Number(product.price) * quantity).toLocaleString()}</span>
+                    </div>
+                    <div className="border-t border-emerald-200 dark:border-emerald-800/80 pt-2 flex items-center justify-between">
+                      <span className="text-sm font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        Your Reseller Profit:
+                      </span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        +₹{((Number(customResalePrice) - Number(product.price)) * quantity).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+                    Please enter a selling price equal to or higher than platform cost (₹{Number(product.price).toLocaleString()}).
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-xs text-secondary-600 dark:text-secondary-400 bg-secondary-50 dark:bg-secondary-800/40 p-3 rounded-lg">
+                  <p className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    <span>Invoice generated for the customer will strictly show <strong>₹{customResalePrice || 0}</strong>.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    <span>Shipped directly to the customer's delivery address without platform pricing.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    <span>Margin profit is credited directly to your TRADENEST Wallet upon delivery.</span>
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowResellModal(false)}
+                    className="btn btn-outline"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!customResalePrice || Number(customResalePrice) < Number(product.price)}
+                    onClick={() => {
+                      setShowResellModal(false)
+                      dispatch(addItem({ productId: product.id, quantity }))
+                      navigate('/checkout', {
+                        state: {
+                          isReseller: true,
+                          resellerPrice: Number(customResalePrice),
+                          productId: product.id,
+                          quantity,
+                        },
+                      })
+                    }}
+                    className="btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    Proceed to Reseller Checkout
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

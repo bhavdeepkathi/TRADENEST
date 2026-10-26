@@ -33,7 +33,13 @@ function getRoleSafeRedirect(role: string, from?: { pathname?: string; search?: 
     }
     return '/seller/dashboard'
   }
-  if (from?.pathname && !from.pathname.startsWith('/admin') && !from.pathname.startsWith('/seller') && from.pathname !== '/login') {
+  if (role === 'DELIVERY_PARTNER') {
+    if (from?.pathname && from.pathname.startsWith('/logistics')) {
+      return `${from.pathname}${query}`
+    }
+    return '/logistics/dashboard'
+  }
+  if (from?.pathname && !from.pathname.startsWith('/admin') && !from.pathname.startsWith('/seller') && !from.pathname.startsWith('/logistics') && from.pathname !== '/login') {
     return `${from.pathname}${query}`
   }
   return '/'
@@ -55,6 +61,40 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true)
     dispatch(setLoading(true))
+
+    // Check if this login belongs to an assigned Delivery Partner
+    try {
+      const assignedRaw = window.localStorage.getItem('tradenest_assigned_delivery_partners')
+      const assigned: Array<{ email: string; password?: string; name: string; phone?: string; hub?: string }> = assignedRaw ? JSON.parse(assignedRaw) : []
+      const matched = assigned.find(
+        (p) => p.email.toLowerCase() === data.email.toLowerCase() && p.password === data.password
+      )
+
+      if (matched || (data.email.toLowerCase() === 'delivery@tradenest.local' && data.password === 'Delivery@123')) {
+        const partnerName = matched?.name || 'Ramesh Kumar'
+        const partnerUser = {
+          id: matched?.email ? `dp-${matched.email.replace(/[^a-z0-9]/g, '-')}` : 'dp-user-1',
+          email: data.email,
+          firstName: partnerName.split(' ')[0],
+          lastName: partnerName.split(' ').slice(1).join(' ') || '(Logistics)',
+          role: 'DELIVERY_PARTNER' as const,
+          phone: matched?.phone || '+91 98201 44892',
+        }
+        dispatch(
+          setCredentials({
+            user: partnerUser,
+            accessToken: `dp-access-token-${Date.now()}`,
+            refreshToken: `dp-refresh-token-${Date.now()}`,
+          })
+        )
+        toast.success(`Welcome to Logistics Portal, ${partnerUser.firstName}!`)
+        navigate('/logistics/dashboard', { replace: true })
+        setIsLoading(false)
+        dispatch(setLoading(false))
+        return
+      }
+    } catch {}
+
     try {
       const result = await login(data).unwrap()
       const payload = JSON.parse(atob(result.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
@@ -320,6 +360,32 @@ export default function Login() {
           <p className="mt-6 text-center text-sm text-secondary-600 dark:text-secondary-400">
             Don't have an account? <Link to="/register" className="font-medium text-primary-600 hover:underline">Sign up</Link>
           </p>
+
+          <div className="mt-6 pt-4 border-t border-secondary-200 dark:border-secondary-700">
+            <p className="text-xs text-center text-secondary-500 mb-2 font-medium">Logistics & Delivery Fleet</p>
+            <button
+              type="button"
+              onClick={() => {
+                const deliveryUser = {
+                  id: 'dp-demo-user-1',
+                  email: 'delivery@tradenest.local',
+                  firstName: 'Ramesh',
+                  lastName: 'Kumar',
+                  role: 'DELIVERY_PARTNER' as const,
+                }
+                dispatch(setCredentials({
+                  user: deliveryUser,
+                  accessToken: 'demo-delivery-partner-token',
+                  refreshToken: 'demo-delivery-partner-refresh',
+                }))
+                toast.success('Signed in as Delivery Partner')
+                navigate('/logistics/dashboard')
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border border-indigo-200 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 text-xs font-semibold transition-colors"
+            >
+              🚚 Access Delivery Partner Portal
+            </button>
+          </div>
         </motion.div>
       </div>
     </div>

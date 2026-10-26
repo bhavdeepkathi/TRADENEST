@@ -1,7 +1,6 @@
 import { Outlet, Link, useLocation, NavLink } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../app/hooks'
 import { logout } from '../features/auth/authSlice'
-import { clearCart } from '../features/cart/cartSlice'
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -46,8 +45,7 @@ export default function AdminLayout() {
   })
 
   const handleLogout = () => {
-    dispatch(logout())
-    dispatch(clearCart())
+    dispatch(logout({ scope: 'admin' }))
     toast.success('Logged out successfully')
   }
 

@@ -1,7 +1,6 @@
 import { Outlet, Link, useLocation, NavLink } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../app/hooks'
 import { logout } from '../features/auth/authSlice'
-import { clearCart } from '../features/cart/cartSlice'
 import {
   LayoutDashboard,
   Package,
@@ -73,8 +72,7 @@ export default function SellerLayout() {
   }, [unreadData?.count])
 
   const handleLogout = () => {
-    dispatch(logout())
-    dispatch(clearCart())
+    dispatch(logout({ scope: 'seller' }))
   }
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen)

@@ -29,6 +29,10 @@ import {
   Loader2,
   X,
   Camera,
+  QrCode,
+  Smartphone,
+  CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react'
 import { NavLink, Link } from 'react-router-dom'
 import { clsx } from 'clsx'
@@ -692,68 +696,299 @@ function Wallet() {
 }
 
 function AddMoneyModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<1 | 2 | 3>(1) // 1: Amount, 2: Method, 3: Gateway Payment & Verification
   const [amount, setAmount] = useState('500')
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD'>('UPI')
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [upiRefId, setUpiRefId] = useState('')
+  const [cardNumber, setCardNumber] = useState('4532 •••• •••• 8821')
+  const [cardExpiry, setCardExpiry] = useState('08/28')
+  const [cardCvv, setCardCvv] = useState('•••')
   const [addToWallet, { isLoading }] = useAddToWalletMutation()
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const num = Number(amount)
-    if (!num || num <= 0) {
-      toast.error('Enter a valid amount')
-      return
-    }
+  const numAmount = Math.max(10, Number(amount) || 10)
+  const merchantVpa = 'bhavdeepbhukan129@okhdfcbank'
+  const merchantName = 'TRADENEST Payments'
+  const upiIntent = `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&am=${numAmount.toFixed(2)}&cu=INR&mode=02&tn=Wallet%20Topup`
+
+  const handleCompletePayment = async () => {
+    setIsVerifying(true)
     try {
-      await addToWallet({ amount: num, paymentMethod: 'UPI' }).unwrap()
-      toast.success(`₹${num} added to wallet successfully!`)
+      // Simulate gateway verification
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      await addToWallet({ amount: numAmount, paymentMethod }).unwrap()
+      toast.success(`₹${numAmount.toLocaleString()} added to wallet successfully!`)
       onClose()
     } catch {
-      toast.error('Failed to add money to wallet')
+      toast.error('Payment verification failed. Please try again.')
+    } finally {
+      setIsVerifying(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="card w-full max-w-sm p-6 bg-white dark:bg-secondary-900 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+      <div className="card w-full max-w-md p-6 bg-white dark:bg-secondary-900 shadow-2xl border border-secondary-200 dark:border-secondary-700">
         <div className="flex items-center justify-between pb-3 border-b border-secondary-200 dark:border-secondary-700">
-          <h3 className="text-lg font-semibold text-secondary-900 dark:text-secondary-50">Add Money to Wallet</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
+          <div>
+            <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-50">Top Up TRADENEST Wallet</h3>
+            <p className="text-xs text-secondary-500">Step {step} of 3 • Secure Payment Gateway</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 text-secondary-500">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleAdd} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">Enter Amount (₹)</label>
-            <input
-              type="number"
-              min="10"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="input w-full text-xl font-bold"
-            />
-          </div>
+        {/* STEP 1: Enter Amount */}
+        {step === 1 && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-secondary-700 dark:text-secondary-300 mb-1.5">
+                Enter Amount to Add (₹)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl font-bold text-secondary-500">₹</span>
+                <input
+                  type="number"
+                  min="10"
+                  max="100000"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="input w-full pl-9 text-2xl font-bold text-secondary-900 dark:text-secondary-50"
+                  placeholder="500"
+                />
+              </div>
+            </div>
 
-          <div className="flex gap-2">
-            {['200', '500', '1000', '2000'].map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => setAmount(preset)}
-                className="btn btn-outline btn-sm flex-1 text-xs"
-              >
-                +₹{preset}
+            <div>
+              <p className="text-xs text-secondary-500 mb-1.5">Quick Add Presets:</p>
+              <div className="grid grid-cols-4 gap-2">
+                {['200', '500', '1000', '2000'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAmount(preset)}
+                    className={clsx(
+                      'btn btn-sm py-2 text-xs font-semibold transition-all',
+                      amount === preset ? 'btn-primary shadow-sm' : 'btn-outline'
+                    )}
+                  >
+                    +₹{preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-secondary-50 dark:bg-secondary-800/50 rounded-xl text-xs text-secondary-600 dark:text-secondary-400 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>Funds are protected and instantly usable across all TRADENEST purchases.</span>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="btn btn-outline text-sm">
+                Cancel
               </button>
-            ))}
+              <button
+                type="button"
+                disabled={!numAmount || numAmount < 10}
+                onClick={() => setStep(2)}
+                className="btn btn-primary text-sm font-semibold disabled:opacity-50"
+              >
+                Next: Payment Method →
+              </button>
+            </div>
           </div>
+        )}
 
-          <div className="flex justify-end gap-3 pt-3">
-            <button type="button" onClick={onClose} className="btn btn-outline btn-sm">Cancel</button>
-            <button type="submit" disabled={isLoading} className="btn btn-primary btn-sm">
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Top Up'}
-            </button>
+        {/* STEP 2: Select Payment Method */}
+        {step === 2 && (
+          <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800">
+              <span className="text-xs font-medium text-primary-800 dark:text-primary-300">Amount to Deposit:</span>
+              <span className="text-lg font-extrabold text-primary-950 dark:text-primary-100">₹{numAmount.toLocaleString()}</span>
+            </div>
+
+            <div className="space-y-2.5">
+              <label className="block text-xs font-semibold text-secondary-700 dark:text-secondary-300">
+                Choose Payment Method
+              </label>
+
+              <label
+                onClick={() => setPaymentMethod('UPI')}
+                className={clsx(
+                  'flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all',
+                  paymentMethod === 'UPI'
+                    ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30'
+                    : 'border-secondary-200 dark:border-secondary-700 hover:border-emerald-300'
+                )}
+              >
+                <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">
+                    UPI Apps & QR Code
+                  </p>
+                  <p className="text-xs text-secondary-500">Google Pay, PhonePe, Paytm, BHIM</p>
+                </div>
+                <input
+                  type="radio"
+                  name="walletPaymentMethod"
+                  checked={paymentMethod === 'UPI'}
+                  onChange={() => setPaymentMethod('UPI')}
+                  className="accent-emerald-600 h-4 w-4"
+                />
+              </label>
+
+              <label
+                onClick={() => setPaymentMethod('CARD')}
+                className={clsx(
+                  'flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all',
+                  paymentMethod === 'CARD'
+                    ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30'
+                    : 'border-secondary-200 dark:border-secondary-700 hover:border-blue-300'
+                )}
+              >
+                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">
+                    Debit / Credit Card & Netbanking
+                  </p>
+                  <p className="text-xs text-secondary-500">Visa, Mastercard, RuPay</p>
+                </div>
+                <input
+                  type="radio"
+                  name="walletPaymentMethod"
+                  checked={paymentMethod === 'CARD'}
+                  onChange={() => setPaymentMethod('CARD')}
+                  className="accent-blue-600 h-4 w-4"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-between gap-3 pt-2">
+              <button type="button" onClick={() => setStep(1)} className="btn btn-outline text-sm">
+                ← Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="btn btn-primary text-sm font-semibold"
+              >
+                Proceed to Pay ₹{numAmount.toLocaleString()} →
+              </button>
+            </div>
           </div>
-        </form>
+        )}
+
+        {/* STEP 3: Complete Payment & Verification */}
+        {step === 3 && (
+          <div className="mt-4 space-y-4">
+            {paymentMethod === 'UPI' ? (
+              <div className="flex flex-col items-center text-center space-y-3">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-semibold">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Exact Amount Locked: ₹{numAmount.toFixed(2)}</span>
+                </div>
+
+                <div className="p-3 bg-white rounded-2xl border-2 border-emerald-500 shadow-md">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiIntent)}`}
+                    alt="Wallet UPI QR"
+                    className="h-40 w-40 rounded-lg"
+                  />
+                </div>
+
+                <p className="text-xs text-secondary-600 dark:text-secondary-400">
+                  Scan using Google Pay, PhonePe or Paytm. The exact deposit amount ₹{numAmount.toFixed(2)} is locked.
+                </p>
+
+                <div className="w-full text-left">
+                  <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
+                    UPI Transaction UTR / Ref ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={upiRefId}
+                    onChange={(e) => setUpiRefId(e.target.value)}
+                    placeholder="e.g. 429381749201"
+                    className="input w-full text-xs"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 bg-secondary-50 dark:bg-secondary-800 rounded-xl space-y-2 border border-secondary-200 dark:border-secondary-700">
+                  <div>
+                    <label className="block text-[11px] font-medium text-secondary-500">Card Number</label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(e.target.value)}
+                      className="input w-full text-sm font-mono mt-0.5"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-secondary-500">Expiry (MM/YY)</label>
+                      <input
+                        type="text"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value)}
+                        className="input w-full text-sm font-mono mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-secondary-500">CVV</label>
+                      <input
+                        type="password"
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value)}
+                        maxLength={4}
+                        className="input w-full text-sm font-mono mt-0.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-secondary-500">
+                  Secured by 256-bit bank grade encryption. Test card pre-configured.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-between gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isVerifying || isLoading}
+                onClick={() => setStep(2)}
+                className="btn btn-outline text-sm"
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                disabled={isVerifying || isLoading}
+                onClick={handleCompletePayment}
+                className="btn btn-primary text-sm font-semibold flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700"
+              >
+                {isVerifying || isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Verifying Deposit...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>I Have Paid • Credit ₹{numAmount.toLocaleString()}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

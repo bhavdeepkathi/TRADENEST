@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
+import AiSearchBar from '../../../components/AiSearchBar'
 import {
   ShoppingCart,
   Heart,
@@ -267,32 +268,9 @@ export default function Home() {
             transition={{ delay: 0.4 }}
             className="mt-16 mx-auto max-w-3xl"
           >
-            <form
-              className="relative rounded-xl bg-white shadow-xl ring-1 ring-secondary-200 dark:bg-secondary-800 dark:ring-secondary-700 p-1"
-              onSubmit={(event) => {
-                event.preventDefault()
-                submitSearch()
-              }}
-            >
-              <div className="relative flex items-center rounded-lg bg-secondary-50 dark:bg-secondary-700/50 px-4 py-3">
-                <Search className="h-5 w-5 text-secondary-400" />
-                <input
-                  type="search"
-                  placeholder="Search products, brands, categories... (e.g., iPhone 15, Nike shoes, Kitchen appliances)"
-                  className="flex-1 ml-3 bg-transparent placeholder-secondary-400 focus:outline-none text-secondary-900 dark:text-secondary-100"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  aria-label="Search products, brands, and categories"
-                />
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 ml-3 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <Zap className="h-4 w-4" />
-                  AI Search
-                </button>
-              </div>
-            </form>
+            <div className="rounded-2xl bg-white/90 dark:bg-secondary-800/90 shadow-2xl p-2 backdrop-blur-sm border border-secondary-200 dark:border-secondary-700">
+              <AiSearchBar placeholder="Try searching 'smartp', 'laptop', 'wireless headphones'..." />
+            </div>
             <p className="mt-3 text-center text-sm text-secondary-500 dark:text-secondary-400">
               Try: <span className="font-medium text-secondary-700 dark:text-secondary-300">"wireless headphones under ₹3000"</span> or{" "}
               <span className="font-medium text-secondary-700 dark:text-secondary-300">"cotton summer dresses"</span>

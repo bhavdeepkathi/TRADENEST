@@ -6,6 +6,11 @@ export function RoleFallbackRedirect() {
   if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
     return <Navigate to="/admin/dashboard" replace />
   }
-  const isSeller = user?.role === 'SELLER'
-  return <Navigate to={isSeller ? '/seller/dashboard' : '/'} replace />
+  if (user?.role === 'SELLER') {
+    return <Navigate to="/seller/dashboard" replace />
+  }
+  if (user?.role === 'DELIVERY_PARTNER') {
+    return <Navigate to="/logistics/dashboard" replace />
+  }
+  return <Navigate to="/" replace />
 }

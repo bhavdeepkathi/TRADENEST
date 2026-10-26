@@ -15,6 +15,13 @@ function loadCartItems(): CartItem[] {
   if (typeof window === 'undefined') return []
 
   try {
+    const session = window.sessionStorage.getItem(CART_STORAGE_KEY)
+    if (session) {
+      const items = JSON.parse(session)
+      if (Array.isArray(items)) {
+        return items.filter((item) => typeof item?.productId === 'string' && Number.isInteger(item?.quantity) && item.quantity > 0)
+      }
+    }
     const stored = window.localStorage.getItem(CART_STORAGE_KEY)
     const items = stored ? JSON.parse(stored) : []
     return Array.isArray(items) ? items.filter((item) => typeof item?.productId === 'string' && Number.isInteger(item?.quantity) && item.quantity > 0) : []
@@ -24,7 +31,19 @@ function loadCartItems(): CartItem[] {
 }
 
 export function persistCartItems(items: CartItem[]) {
-  if (typeof window !== 'undefined') window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+    const sessionRaw = window.sessionStorage.getItem('tradenest-auth')
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw)
+      const role = parsed?.user?.role
+      if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'SELLER') {
+        return
+      }
+    }
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+  } catch {}
 }
 
 const initialState: CartState = { items: loadCartItems() }

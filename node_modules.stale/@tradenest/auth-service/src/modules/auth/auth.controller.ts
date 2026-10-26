@@ -9,7 +9,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken, parseTok
 import { logger } from '../../utils/logger';
 import { RegisterDto, LoginDto, VerifyOtpDto, ForgotPasswordDto, ResetPasswordDto, TokenPair, UserRole, UpdateProfileDto } from '@tradenest/common';
 import { OAuth2Client } from 'google-auth-library';
-import { sendVerificationEmail } from '../../utils/mailer';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../../utils/mailer';
 
 export class AuthRepository {
   async findUserByEmail(email: string) {
@@ -325,23 +325,26 @@ export class AuthService {
     const user = await this.repo.findUserByEmail(dto.email);
     if (!user) {
       // Don't reveal if email exists
-      return { message: 'If the email exists, a reset link has been sent' };
+      return { message: 'If the email exists, a reset link has been sent to your email' };
     }
 
     const token = generateSlug(Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
-    const tokenHash = await bcrypt.hash(token, config.BCRYPT_ROUNDS);
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await this.repo.createPasswordReset(user.id, tokenHash, expiresAt);
 
-    // TODO: Send reset email with token
+    await sendPasswordResetEmail(user.email, token, user.firstName);
     logger.info(`Password reset token for ${dto.email}: ${token}`);
 
-    return { message: 'If the email exists, a reset link has been sent' };
+    return {
+      message: 'If the email exists, a reset link has been sent to your email',
+      ...(config.NODE_ENV !== 'production' ? { devResetToken: token } : {}),
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
-    const tokenHash = await bcrypt.hash(dto.token, config.BCRYPT_ROUNDS);
+    const tokenHash = crypto.createHash('sha256').update(dto.token ? dto.token.trim() : '').digest('hex');
     const resetRecord = await this.repo.findValidPasswordReset(tokenHash);
 
     if (!resetRecord) {

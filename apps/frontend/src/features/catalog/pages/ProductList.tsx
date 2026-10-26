@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Filter, ChevronDown, Grid, Heart, List, Search, ShoppingCart } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Filter, ChevronDown, Grid, Heart, List, Search, ShoppingCart, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
@@ -11,6 +11,7 @@ import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
 
 export default function ProductList() {
+  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const [searchParams] = useSearchParams()
   const accessToken = useAppSelector((state) => state.auth.accessToken)
@@ -58,6 +59,11 @@ export default function ProductList() {
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Could not add this product to your cart. Please try again.'))
     }
+  }
+
+  const handleBuyNow = async (productId: string) => {
+    await handleAddToCart(productId)
+    navigate('/checkout')
   }
 
   if (isLoading) {
@@ -270,21 +276,45 @@ export default function ProductList() {
                   <span className="text-sm font-medium text-secondary-900 dark:text-secondary-50">★ {product.ratingAvg == null ? '4.5' : Number(product.ratingAvg).toFixed(1)}</span>
                   <span className="text-sm text-secondary-500">({product.reviewCount || 0})</span>
                 </div>
-                <div className="mt-auto flex items-center gap-2">
-                  <span className="text-xl font-bold text-secondary-900 dark:text-secondary-50">₹{Number(product.price).toLocaleString()}</span>
+                <div className="mt-auto">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-xl font-bold text-secondary-900 dark:text-secondary-50">₹{Number(product.price).toLocaleString()}</span>
+                    {product.mrp && Number(product.mrp) > Number(product.price) && (
+                      <>
+                        <span className="line-through text-sm text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                          {Math.round(((Number(product.mrp) - Number(product.price)) / Number(product.mrp)) * 100)}% OFF
+                        </span>
+                      </>
+                    )}
+                  </div>
                   {product.mrp && Number(product.mrp) > Number(product.price) && (
-                    <span className="line-through text-sm text-secondary-400">₹{Number(product.mrp).toLocaleString()}</span>
+                    <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      Save ₹{(Number(product.mrp) - Number(product.price)).toLocaleString()}
+                    </p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleAddToCart(product.id)}
-                  disabled={availableQuantity === 0}
-                  className="btn btn-primary mt-4 flex w-full items-center justify-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  {availableQuantity > 0 ? 'Add to Cart' : 'Out of Stock'}
-                </button>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleAddToCart(product.id)}
+                    disabled={availableQuantity === 0}
+                    className="btn btn-outline flex-1 flex items-center justify-center gap-1.5 text-xs py-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" />
+                    <span>Add to Cart</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleBuyNow(product.id)}
+                    disabled={availableQuantity === 0}
+                    className="btn btn-primary flex-1 flex items-center justify-center gap-1.5 text-xs py-2 bg-gradient-to-r from-amber-500 to-primary-600 hover:from-amber-600 hover:to-primary-700 text-white shadow-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Zap className="h-3.5 w-3.5 fill-current" />
+                    <span>Buy Now</span>
+                  </button>
+                </div>
               </div>
             </motion.article>
             )

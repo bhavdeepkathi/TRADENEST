@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag, Banknote, QrCode, Copy, CheckCircle, Clock } from 'lucide-react'
+import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag, Banknote, QrCode, Copy, CheckCircle, Clock, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { clearCart } from '../../cart/cartSlice'
@@ -86,7 +86,21 @@ export default function Checkout() {
   )
   const [upiId, setUpiId] = useState('customer@okaxis')
   const [activeUpiTab, setActiveUpiTab] = useState<'QR' | 'VPA'>('QR')
-  const [qrDisplayMode, setQrDisplayMode] = useState<'ORIGINAL' | 'DYNAMIC'>('ORIGINAL')
+  const [qrDisplayMode, setQrDisplayMode] = useState<'DYNAMIC'>('DYNAMIC')
+  const incomingReseller = Boolean((location.state as any)?.isReseller)
+  const incomingResellerPrice = Number((location.state as any)?.resellerPrice) || 0
+  const [isResellerOrder, setIsResellerOrder] = useState<boolean>(incomingReseller)
+  const [resellerCustomerPrice, setResellerCustomerPrice] = useState<number | ''>(incomingResellerPrice || '')
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [lastPlacedOrderInfo, setLastPlacedOrderInfo] = useState<{
+    orderId: string
+    isReseller: boolean
+    customerPrice: number
+    customerName: string
+    customerPhone: string
+    address: string
+    items: any[]
+  } | null>(null)
   const [isVerifyingUpi, setIsVerifyingUpi] = useState(false)
 
   const items = cart?.items || []
@@ -192,6 +206,105 @@ export default function Checkout() {
     return result
   }
 
+  const notifySellerNewOrder = (dispatchDetails: {
+    orderId: string
+    customerName: string
+    customerPhone: string
+    address: string
+    city: string
+    pincode: string
+    items: any[]
+    totalAmount: number
+    paymentMethod: string
+    isReseller: boolean
+    customerBillAmount: number
+  }) => {
+    const orderForSeller = {
+      id: dispatchDetails.orderId,
+      userId: user?.id || 'customer-1',
+      createdAt: new Date().toISOString(),
+      status: 'PENDING',
+      total: dispatchDetails.totalAmount,
+      isReseller: dispatchDetails.isReseller,
+      customerBillAmount: dispatchDetails.customerBillAmount,
+      shippingAddress: {
+        fullName: dispatchDetails.customerName,
+        phone: dispatchDetails.customerPhone,
+        line1: dispatchDetails.address,
+        city: dispatchDetails.city,
+        postalCode: dispatchDetails.pincode,
+      },
+      items: dispatchDetails.items.map((item) => ({
+        id: item.productId || item.id,
+        productId: item.productId || item.id,
+        title: item.product?.title || item.title || 'Product',
+        price: item.product?.price || item.price || 700,
+        quantity: item.quantity || 1,
+        subtotal: (item.product?.price || item.price || 700) * (item.quantity || 1),
+        product: item.product || item,
+      })),
+      payment: {
+        provider: dispatchDetails.paymentMethod,
+        status: 'SUCCESS',
+      },
+    }
+
+    try {
+      const raw = window.localStorage.getItem('tradenest_pending_seller_orders')
+      const list = raw ? JSON.parse(raw) : []
+      window.localStorage.setItem('tradenest_pending_seller_orders', JSON.stringify([orderForSeller, ...list]))
+      const channel = new BroadcastChannel('tradenest-seller-channel')
+      channel.postMessage({ type: 'NEW_CUSTOMER_ORDER', order: orderForSeller })
+      channel.close()
+    } catch {}
+  }
+
+  const notifyLogisticsNewOrder = (dispatchDetails: {
+    orderId: string
+    customerName: string
+    customerPhone: string
+    address: string
+    city: string
+    pincode: string
+    items: any[]
+    totalAmount: number
+    paymentMethod: string
+    isReseller: boolean
+    customerBillAmount: number
+  }) => {
+    const newShipment = {
+      id: `shp-${Date.now()}`,
+      orderNumber: `TN-ORD-${dispatchDetails.orderId.slice(0, 8).toUpperCase()}`,
+      customerName: dispatchDetails.customerName,
+      customerPhone: dispatchDetails.customerPhone,
+      address: dispatchDetails.address,
+      city: dispatchDetails.city,
+      pincode: dispatchDetails.pincode,
+      distance: `${(1.2 + Math.random() * 3.5).toFixed(1)} km`,
+      status: 'PENDING_PICKUP' as const,
+      claimedBy: null,
+      itemsCount: dispatchDetails.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0),
+      totalWeight: `${Math.max(0.5, dispatchDetails.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) * 0.6).toFixed(1)} kg`,
+      isReseller: dispatchDetails.isReseller,
+      customerBillAmount: dispatchDetails.customerBillAmount,
+      platformBaseCost: dispatchDetails.totalAmount,
+      assignedAt: 'Just now',
+      paymentMethod: dispatchDetails.paymentMethod === 'COD' ? `Cash on Delivery (₹${dispatchDetails.totalAmount})` : `Prepaid (${dispatchDetails.paymentMethod})`,
+    }
+
+    try {
+      const channel = new BroadcastChannel('tradenest-logistics-channel')
+      channel.postMessage({ type: 'NEW_ORDER_DISPATCH', shipment: newShipment })
+      channel.close()
+    } catch {}
+
+    try {
+      const existingRaw = window.localStorage.getItem('tradenest_logistics_dispatches')
+      const existing = existingRaw ? JSON.parse(existingRaw) : []
+      window.localStorage.setItem('tradenest_logistics_dispatches', JSON.stringify([newShipment, ...existing]))
+    } catch {}
+  }
+
   const handleVerifyDirectUpi = async () => {
     if (!paymentData?.paymentId || !paymentData?.orderId) {
       toast.error('Payment session not found. Please try again.')
@@ -218,11 +331,52 @@ export default function Checkout() {
         }).unwrap()
 
         await dispatch(clearCart())
+        const addr = (paymentData as any)?.shippingAddress || {}
+        const recipientName = addr.fullName || (user ? `${user.firstName} ${user.lastName}` : 'Customer')
+        const recipientPhone = addr.phone || user?.phone || '+91 98201 44892'
+        const recipientAddress = addr.addressLine1
+          ? `${addr.addressLine1}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city}, ${addr.state}`
+          : 'Sunshine Apartments, Hill Road, Bandra West, Mumbai'
+        const recipientCity = addr.city || 'Mumbai'
+        const recipientPincode = addr.postalCode || '400050'
+
+        notifySellerNewOrder({
+          orderId: paymentData.orderId,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          city: recipientCity,
+          pincode: recipientPincode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: 'UPI',
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        notifyLogisticsNewOrder({
+          orderId: paymentData.orderId,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          city: recipientCity,
+          pincode: recipientPincode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: 'UPI',
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        setLastPlacedOrderInfo({
+          orderId: paymentData.orderId,
+          isReseller: isResellerOrder,
+          customerPrice: Number(resellerCustomerPrice) || total,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          items: [...items],
+        })
         setStep(4)
         toast.success('UPI Payment verified successfully!')
-        setTimeout(() => {
-          navigate(`/orders/${paymentData.orderId}`)
-        }, 2000)
       } else {
         throw new Error('Payment verification failed')
       }
@@ -268,11 +422,52 @@ export default function Checkout() {
         }).unwrap()
 
         await dispatch(clearCart())
+        const addr = (paymentData as any)?.shippingAddress || {}
+        const recipientName = addr.fullName || (user ? `${user.firstName} ${user.lastName}` : 'Customer')
+        const recipientPhone = addr.phone || user?.phone || '+91 98201 44892'
+        const recipientAddress = addr.addressLine1
+          ? `${addr.addressLine1}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city}, ${addr.state}`
+          : 'Customer Address, Bandra West, Mumbai'
+        const recipientCity = addr.city || 'Mumbai'
+        const recipientPincode = addr.postalCode || '400050'
+
+        notifySellerNewOrder({
+          orderId: paymentData.orderId,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          city: recipientCity,
+          pincode: recipientPincode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: 'UPI',
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        notifyLogisticsNewOrder({
+          orderId: paymentData.orderId,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          city: recipientCity,
+          pincode: recipientPincode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: 'UPI',
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        setLastPlacedOrderInfo({
+          orderId: paymentData.orderId,
+          isReseller: isResellerOrder,
+          customerPrice: Number(resellerCustomerPrice) || total,
+          customerName: recipientName,
+          customerPhone: recipientPhone,
+          address: recipientAddress,
+          items: [...items],
+        })
         setStep(4)
         toast.success('UPI Payment confirmed via gateway!')
-        setTimeout(() => {
-          navigate(`/orders/${paymentData.orderId}`)
-        }, 2000)
       }
     } catch (err: unknown) {
       const msg = getErrorMessage(err, 'Gateway UPI payment failed or was cancelled')
@@ -317,6 +512,7 @@ export default function Checkout() {
         ...paymentResult,
         orderId,
         order,
+        shippingAddress: data,
       })
 
       // If user chose UPI: Transition directly to Step 3 interactive payment screen
@@ -387,13 +583,43 @@ export default function Checkout() {
           provider: data.paymentMethod,
         }).unwrap()
         await dispatch(clearCart())
+        notifySellerNewOrder({
+          orderId,
+          customerName: data.fullName,
+          customerPhone: data.phone,
+          address: `${data.addressLine1}${data.addressLine2 ? ', ' + data.addressLine2 : ''}, ${data.city}, ${data.state}`,
+          city: data.city,
+          pincode: data.postalCode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: data.paymentMethod,
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        notifyLogisticsNewOrder({
+          orderId,
+          customerName: data.fullName,
+          customerPhone: data.phone,
+          address: `${data.addressLine1}${data.addressLine2 ? ', ' + data.addressLine2 : ''}, ${data.city}, ${data.state}`,
+          city: data.city,
+          pincode: data.postalCode,
+          items: [...items],
+          totalAmount: total,
+          paymentMethod: data.paymentMethod,
+          isReseller: isResellerOrder,
+          customerBillAmount: Number(resellerCustomerPrice) || total,
+        })
+        setLastPlacedOrderInfo({
+          orderId,
+          isReseller: isResellerOrder,
+          customerPrice: Number(resellerCustomerPrice) || total,
+          customerName: data.fullName,
+          customerPhone: data.phone,
+          address: `${data.addressLine1}, ${data.city}, ${data.state} - ${data.postalCode}`,
+          items: [...items],
+        })
         setStep(4)
         toast.success('Order placed successfully!')
-        
-        // Navigate to order confirmation after a short delay
-        setTimeout(() => {
-          navigate(`/orders/${orderId}`)
-        }, 2000)
       } else {
         throw new Error('Payment verification failed')
       }
@@ -420,27 +646,206 @@ export default function Checkout() {
     )
   }
 
-  // Step 4: Success
+  // Step 4: Success & Purchase Rewards
   if (step === 4) {
+    const orderId = paymentData?.orderId || lastPlacedOrderInfo?.orderId || 'ORD-' + Date.now().toString().slice(-6)
+    const earnedCashback = Math.max(50, Math.round(total * 0.05))
+    const earnedCoupon = 'REWARD10'
+    const isResell = isResellerOrder || lastPlacedOrderInfo?.isReseller
+    const resalePrice = Number(resellerCustomerPrice) || lastPlacedOrderInfo?.customerPrice || total
+    const resellerMargin = Math.max(0, resalePrice - total)
+
     return (
-      <div className="px-4 py-16">
+      <div className="px-4 py-12">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="mx-auto max-w-md text-center"
+          className="mx-auto max-w-xl text-center space-y-6"
         >
-          <div className="mb-6 flex justify-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-              <Check className="h-10 w-10 text-green-600" />
+          <div className="flex justify-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 shadow-lg">
+              <Check className="h-10 w-10 stroke-[2.5]" />
             </div>
           </div>
-          <h1 className="mb-2 text-2xl font-bold text-secondary-900 dark:text-secondary-50">Order Confirmed!</h1>
-          <p className="mb-6 text-secondary-600 dark:text-secondary-400">Your order has been placed successfully.</p>
-          <div className="space-y-3">
-            <a href={`/orders/${paymentData?.orderId}`} className="btn btn-primary w-full">View Order</a>
-            <a href="/products" className="btn btn-outline w-full">Continue Shopping</a>
+          <div>
+            <h1 className="text-3xl font-extrabold text-secondary-900 dark:text-secondary-50">
+              {isResell ? '🎉 Reseller Order Placed Successfully!' : '🎉 Order Confirmed!'}
+            </h1>
+            <p className="mt-2 text-sm text-secondary-600 dark:text-secondary-400">
+              Order ID: <span className="font-mono font-bold text-secondary-800 dark:text-secondary-200">#{orderId.slice(0, 10)}</span>
+            </p>
+          </div>
+
+          {/* Reseller Order Breakdown */}
+          {isResell && (
+            <div className="p-5 rounded-2xl bg-emerald-50/80 border border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800 text-left space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-200 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-300">
+                  💼 Reseller Order
+                </span>
+                <span className="text-xs text-secondary-500 font-medium">Doorstep Delivery to Customer</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1 text-sm">
+                <div>
+                  <p className="text-xs text-secondary-500">Customer Bill Total:</p>
+                  <p className="text-lg font-black text-secondary-900 dark:text-secondary-100">₹{resalePrice.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold">Your Reseller Margin:</p>
+                  <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">+₹{resellerMargin.toLocaleString()}</p>
+                </div>
+              </div>
+              <p className="text-xs text-secondary-600 dark:text-secondary-400 pt-1 border-t border-emerald-200 dark:border-emerald-800">
+                The parcel will be delivered with a dedicated TRADENEST bill of <strong>₹{resalePrice.toLocaleString()}</strong>. Your profit margin of <strong>₹{resellerMargin.toLocaleString()}</strong> will be credited to your TRADENEST Wallet upon delivery!
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(true)}
+                className="w-full btn btn-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-2 mt-2"
+              >
+                📄 View & Print Customer Bill (₹{resalePrice.toLocaleString()})
+              </button>
+            </div>
+          )}
+
+          {/* Reward & Cashback Box */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 dark:from-amber-950/40 dark:to-orange-950/40 dark:border-amber-800 text-left shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🎁</span>
+              <h3 className="font-bold text-amber-900 dark:text-amber-200 text-base">
+                Your Order Rewards & Next Purchase Discount
+              </h3>
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              You earned exclusive cashback and a discount coupon code on this purchase:
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="p-3.5 bg-white/90 dark:bg-secondary-800/90 rounded-xl border border-amber-200 dark:border-amber-800 shadow-xs">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1">
+                  <Wallet className="h-4 w-4" />
+                  <span>₹{earnedCashback} Wallet Cashback</span>
+                </div>
+                <p className="text-[11px] text-secondary-500">
+                  Credited to your TRADENEST Wallet to spend on any future order.
+                </p>
+              </div>
+              <div className="p-3.5 bg-white/90 dark:bg-secondary-800/90 rounded-xl border border-amber-200 dark:border-amber-800 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-primary-700 dark:text-primary-400">
+                    <Tag className="h-4 w-4" />
+                    <span>Next Order Coupon</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(earnedCoupon)
+                      toast.success(`Coupon code ${earnedCoupon} copied!`)
+                    }}
+                    className="text-[11px] font-bold text-primary-600 hover:underline flex items-center gap-0.5"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy
+                  </button>
+                </div>
+                <div className="mt-1.5 font-mono font-bold text-xs bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded text-amber-900 dark:text-amber-200 inline-block">
+                  {earnedCoupon}
+                </div>
+                <p className="text-[11px] text-secondary-500 mt-1">
+                  10% OFF on your next order up to ₹200.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Link to={`/orders/${orderId}`} className="btn btn-primary flex-1 py-3">
+              View Order Details
+            </Link>
+            <Link to="/products" className="btn btn-outline flex-1 py-3">
+              Continue Shopping
+            </Link>
           </div>
         </motion.div>
+
+        {/* Customer Invoice Modal */}
+        {showInvoiceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="card w-full max-w-lg p-6 space-y-4 bg-white dark:bg-secondary-900 shadow-2xl border border-secondary-200 dark:border-secondary-700">
+              <div className="flex items-center justify-between border-b border-secondary-200 dark:border-secondary-700 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-lg text-secondary-900 dark:text-secondary-100">TRADENEST TAX INVOICE</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">CUSTOMER BILL</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="text-secondary-500 hover:text-secondary-700 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="text-xs space-y-2 text-secondary-700 dark:text-secondary-300">
+                <div className="flex justify-between">
+                  <span><strong>Invoice No:</strong> INV-{(orderId).slice(0, 8).toUpperCase()}</span>
+                  <span><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')}</span>
+                </div>
+                <div>
+                  <p><strong>Billed & Delivered To:</strong></p>
+                  <p className="font-medium text-secondary-900 dark:text-secondary-100">
+                    {lastPlacedOrderInfo?.customerName || user?.firstName || 'Customer'}
+                  </p>
+                  <p className="text-secondary-500">
+                    {lastPlacedOrderInfo?.address || 'Customer Shipping Address'}
+                  </p>
+                  <p className="text-secondary-500">Phone: {lastPlacedOrderInfo?.customerPhone || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="border border-secondary-200 dark:border-secondary-700 rounded-lg overflow-hidden">
+                <div className="bg-secondary-100 dark:bg-secondary-800 px-3 py-2 text-xs font-bold text-secondary-800 dark:text-secondary-200 flex justify-between">
+                  <span>Item Description</span>
+                  <span>Amount</span>
+                </div>
+                <div className="p-3 text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span>E-Commerce Ordered Goods (Standard Delivery)</span>
+                    <span className="font-bold">₹{resalePrice.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-secondary-500 text-[11px]">
+                    <span>Shipping & Handling</span>
+                    <span className="text-emerald-600 font-semibold">FREE</span>
+                  </div>
+                </div>
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm font-bold flex justify-between border-t border-secondary-200 dark:border-secondary-700">
+                  <span className="text-emerald-900 dark:text-emerald-200">Total Billed to Customer:</span>
+                  <span className="text-emerald-700 dark:text-emerald-400">₹{resalePrice.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-secondary-400 text-center">
+                This is an authorized computer-generated TRADENEST tax invoice delivered directly to customer.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="btn btn-primary btn-sm"
+                >
+                  🖨️ Print Customer Invoice
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="btn btn-outline btn-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -450,7 +855,7 @@ export default function Checkout() {
     const orderTotal = paymentData?.amount || total
     const merchantVpa = paymentData?.upiVpa || 'bhavdeepbhukan129@okhdfcbank'
     const merchantName = (paymentData as any)?.upiMerchantName || 'Bhavdeep Bhukan'
-    const qrData = paymentData?.upiIntent || `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&aid=uGICAgMCjr6boHA&am=${orderTotal.toFixed(2)}&cu=INR&tr=${paymentData?.orderId || ''}&tn=Order%20Payment`
+    const qrData = paymentData?.upiIntent || `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&aid=uGICAgMCjr6boHA&am=${orderTotal.toFixed(2)}&cu=INR&mode=02&tr=${paymentData?.orderId || ''}&tn=Order%20Payment`
 
     return (
       <div className="px-4 py-8 sm:px-6 lg:px-8">
@@ -543,51 +948,18 @@ export default function Checkout() {
             {/* TAB 1: QR CODE */}
             {activeUpiTab === 'QR' && (
               <div className="flex flex-col items-center text-center space-y-4">
-                {/* QR Display Mode Toggle */}
-                <div className="inline-flex rounded-lg bg-secondary-100 p-1 dark:bg-secondary-800 text-xs font-medium">
-                  <button
-                    type="button"
-                    onClick={() => setQrDisplayMode('ORIGINAL')}
-                    className={clsx(
-                      'px-3 py-1.5 rounded-md transition-all',
-                      qrDisplayMode === 'ORIGINAL'
-                        ? 'bg-white text-secondary-900 shadow-xs font-semibold dark:bg-secondary-700 dark:text-secondary-100'
-                        : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
-                    )}
-                  >
-                    Original GPay QR
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQrDisplayMode('DYNAMIC')}
-                    className={clsx(
-                      'px-3 py-1.5 rounded-md transition-all',
-                      qrDisplayMode === 'DYNAMIC'
-                        ? 'bg-white text-secondary-900 shadow-xs font-semibold dark:bg-secondary-700 dark:text-secondary-100'
-                        : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
-                    )}
-                  >
-                    Dynamic QR (₹{orderTotal} Auto-filled)
-                  </button>
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold border border-emerald-300 dark:border-emerald-700">
+                  <Shield className="h-4 w-4 text-emerald-600" />
+                  <span>🔒 Exact Amount Locked: ₹{orderTotal.toFixed(2)} (Non-modifiable on GPay / PhonePe)</span>
                 </div>
 
-                {qrDisplayMode === 'ORIGINAL' ? (
-                  <div className="p-2 bg-white rounded-2xl border-2 border-emerald-500 shadow-md max-w-[280px]">
-                    <img
-                      src="/upi-qr.jpg"
-                      alt="Bhavdeep Bhukan Google Pay QR"
-                      className="w-full object-contain rounded-lg"
-                    />
-                  </div>
-                ) : (
-                  <div className="p-3 bg-white rounded-2xl border-2 border-emerald-500 shadow-md">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`}
-                      alt="Dynamic UPI Payment QR Code"
-                      className="h-48 w-48 rounded-lg"
-                    />
-                  </div>
-                )}
+                <div className="p-3.5 bg-white rounded-2xl border-2 border-emerald-500 shadow-lg">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`}
+                    alt="Dynamic UPI Payment QR Code"
+                    className="h-48 w-48 rounded-lg"
+                  />
+                </div>
 
                 <div>
                   <p className="font-semibold text-secondary-900 dark:text-secondary-50 text-base">
@@ -597,6 +969,14 @@ export default function Checkout() {
                     Google Pay • PhonePe • Paytm • BHIM • Cred • Any Bank UPI
                   </p>
                 </div>
+
+                <a
+                  href={qrData}
+                  className="btn btn-outline w-full py-2.5 text-xs flex items-center justify-center gap-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                >
+                  <Smartphone className="h-4 w-4 text-emerald-600" />
+                  <span>Open directly in UPI App (Mobile)</span>
+                </a>
 
                 <button
                   type="button"
@@ -830,6 +1210,76 @@ export default function Checkout() {
               <div className="mt-4 flex items-center gap-2">
                 <input {...register('saveAddress')} id="saveAddress" type="checkbox" className="h-4 w-4 rounded border-secondary-300 text-primary-600 focus:ring-primary-500" />
                 <label htmlFor="saveAddress" className="text-sm text-secondary-600 dark:text-secondary-400">Save as default address</label>
+              </div>
+
+              {/* Reseller Order Mode */}
+              <div className="mt-6 rounded-xl border border-emerald-300 bg-emerald-50/50 p-4 dark:border-emerald-800 dark:bg-emerald-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <p className="font-semibold text-secondary-900 dark:text-secondary-100 text-sm">
+                        Reseller Order Mode
+                      </p>
+                      <p className="text-xs text-secondary-500">
+                        Selling to a customer? Ship directly to their address with your custom invoice.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isResellerOrder}
+                      onChange={(e) => {
+                        setIsResellerOrder(e.target.checked)
+                        if (e.target.checked && (!resellerCustomerPrice || Number(resellerCustomerPrice) < total)) {
+                          setResellerCustomerPrice(Math.round(total * 1.35))
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-secondary-200 peer-focus:outline-none rounded-full peer dark:bg-secondary-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-secondary-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {isResellerOrder && (
+                  <div className="mt-4 pt-4 border-t border-emerald-200 dark:border-emerald-800 space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary-800 dark:text-secondary-200 mb-1">
+                          Customer Selling Price / Bill Amount (₹)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-500 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min={total}
+                            value={resellerCustomerPrice}
+                            onChange={(e) => setResellerCustomerPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                            placeholder={`e.g. ${Math.round(total * 1.35)}`}
+                            className="w-full rounded-lg border border-secondary-300 bg-white pl-8 pr-3 py-2 text-sm font-semibold text-secondary-900 focus:border-emerald-500 focus:outline-none dark:border-secondary-600 dark:bg-secondary-800 dark:text-secondary-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-white dark:bg-secondary-800 rounded-lg border border-emerald-200 dark:border-emerald-800 flex flex-col justify-center">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-secondary-500">Platform Cost:</span>
+                          <span className="font-semibold text-secondary-800 dark:text-secondary-200">₹{total.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs mt-1">
+                          <span className="font-bold text-emerald-700 dark:text-emerald-400">Your Reseller Margin:</span>
+                          <span className="font-bold text-base text-emerald-600 dark:text-emerald-400">
+                            +₹{Math.max(0, (Number(resellerCustomerPrice) || total) - total).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-secondary-500 leading-normal">
+                      ✨ <strong>How Reselling Works:</strong> We ship directly to your customer's shipping address above. The delivery parcel includes a branded TRADENEST bill showing strictly your custom price of ₹{resellerCustomerPrice || total}. Upon successful delivery, your profit margin of ₹{Math.max(0, (Number(resellerCustomerPrice) || total) - total)} is automatically credited to your TRADENEST Wallet!
+                    </p>
+                  </div>
+                )}
               </div>
             </motion.section>
 

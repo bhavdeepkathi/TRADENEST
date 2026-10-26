@@ -2,7 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAppSelector } from '../app/hooks'
 
 interface RoleBasedRouteProps {
-  allowedRoles: ('CUSTOMER' | 'SELLER' | 'ADMIN' | 'SUPER_ADMIN')[]
+  allowedRoles: ('CUSTOMER' | 'SELLER' | 'ADMIN' | 'SUPER_ADMIN' | 'DELIVERY_PARTNER')[]
   fallbackPath?: string
 }
 
@@ -41,10 +41,29 @@ export function GuestRoute() {
     if (user?.role === 'SELLER') {
       return <Navigate to="/seller/dashboard" replace />
     }
+    if (user?.role === 'DELIVERY_PARTNER') {
+      return <Navigate to="/logistics/dashboard" replace />
+    }
     return <Navigate to="/" replace />
   }
 
   return <Outlet />
+}
+
+export function LogisticsRoute() {
+  const { user, loading, isAuthenticated } = useAppSelector((state) => state.auth)
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      </div>
+    )
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  const isLogistics = user?.role === 'DELIVERY_PARTNER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  return isLogistics ? <Outlet /> : <Navigate to="/" replace />
 }
 
 export function AdminRoute() {

@@ -201,3 +201,93 @@ export async function sendKycDecisionEmail(
   }
   return { success: true };
 }
+
+export async function sendPasswordResetEmail(
+  to: string,
+  resetToken: string,
+  firstName?: string
+): Promise<{ success: boolean; sentViaSmtp: boolean }> {
+  const name = firstName || 'there';
+  const hasSmtpConfigured = !!(config.SMTP_USER || config.SMTP_HOST !== 'localhost');
+  const resetUrl = `http://localhost:3000/reset-password?token=${encodeURIComponent(resetToken)}&email=${encodeURIComponent(to)}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Reset Your TRADENEST Password</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; }
+    .container { max-width: 540px; margin: 32px auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
+    .logo { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
+    .content { padding: 32px 24px; color: #334155; line-height: 1.6; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px; }
+    .code-box { background-color: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px 24px; text-align: center; margin: 24px 0; }
+    .token-text { font-family: 'Courier New', Courier, monospace; font-size: 20px; font-weight: 800; letter-spacing: 2px; color: #4f46e5; word-break: break-all; margin: 0; }
+    .btn { display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 8px; margin: 16px 0; }
+    .note { font-size: 13px; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+    .footer { background-color: #f8fafc; padding: 16px 24px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="logo">TRADENEST</h1>
+      <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 14px;">Account Security</p>
+    </div>
+    <div class="content">
+      <h2 class="title">Reset Your Password</h2>
+      <p>Hi <strong>${name}</strong>,</p>
+      <p>We received a request to reset your password for your TRADENEST account. You can reset it by clicking the button below or using your reset token:</p>
+      
+      <div style="text-align: center;">
+        <a href="${resetUrl}" class="btn">Reset Password</a>
+      </div>
+
+      <div class="code-box">
+        <p style="font-size: 12px; color: #64748b; margin: 0 0 6px 0;">Or use this Reset Token directly:</p>
+        <div class="token-text">${resetToken}</div>
+      </div>
+
+      <p class="note">
+        <strong>Security Notice:</strong> This link and token are valid for 1 hour. If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+      </p>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} TRADENEST Marketplace Inc. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  const text = `Hi ${name},\n\nYou requested a password reset for your TRADENEST account.\n\nReset your password here: ${resetUrl}\nOr use your reset token: ${resetToken}\n\nValid for 1 hour.\nIf you did not request this, please ignore this email.`;
+
+  if (hasSmtpConfigured) {
+    try {
+      const client = getTransporter();
+      await client.sendMail({
+        from: {
+          name: 'TRADENEST Security',
+          address: config.SMTP_USER || 'noreply@tradenest.local',
+        },
+        to,
+        replyTo: config.SMTP_USER,
+        subject: 'Reset your TRADENEST password',
+        text,
+        html,
+      });
+      logger.info(`✅ Password reset email dispatched successfully to ${to}`);
+      return { success: true, sentViaSmtp: true };
+    } catch (err: any) {
+      logger.warn(`⚠️ Failed to send password reset email via SMTP to ${to}: ${err?.message || err}. Falling back to dev logger.`);
+      logger.info(`[FALLBACK DEV RESET TOKEN] Reset Token for ${to}: ${resetToken}`);
+      return { success: true, sentViaSmtp: false };
+    }
+  } else {
+    logger.info(`[DEV MODE - No SMTP configured] Password Reset Token for ${to}: ${resetToken}`);
+    return { success: true, sentViaSmtp: false };
+  }
+}

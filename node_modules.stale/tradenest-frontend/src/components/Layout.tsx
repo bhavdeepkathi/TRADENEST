@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAppSelector } from '../app/hooks'
+import AiSearchBar from './AiSearchBar'
 import { logout } from '../features/auth/authSlice'
 import { clearCart } from '../features/cart/cartSlice'
 import { useAppDispatch } from '../app/hooks'
@@ -87,7 +88,7 @@ export default function Layout() {
   })
 
   const handleLogout = () => {
-    dispatch(logout())
+    dispatch(logout({ scope: 'customer' }))
     dispatch(clearCart())
   }
 
@@ -102,10 +103,15 @@ export default function Layout() {
       <header className="sticky top-0 z-50 w-full border-b border-secondary-200 dark:border-secondary-700 bg-white/80 dark:bg-secondary-900/80 backdrop-blur-sm">
         <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
           <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center">
+            <div className="flex items-center gap-4">
               <Link to="/" className="text-xl font-bold text-primary-600 dark:text-primary-400" aria-label="TRADENEST home">
                 TRADENEST
               </Link>
+            </div>
+
+            {/* AI Search Bar in Header */}
+            <div className="hidden sm:block flex-1 max-w-md mx-4">
+              <AiSearchBar placeholder="Search 'smartp', 'laptop'..." />
             </div>
 
             <div className="hidden md:flex md:items-center md:gap-6">

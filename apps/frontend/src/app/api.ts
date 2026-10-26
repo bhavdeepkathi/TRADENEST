@@ -94,6 +94,12 @@ export const api = createApi({
     }, { email: string; password: string }>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),
     }),
+    forgotPassword: builder.mutation<{ message: string; devResetToken?: string }, { email: string }>({
+      query: (body) => ({ url: '/auth/forgot-password', method: 'POST', body }),
+    }),
+    resetPassword: builder.mutation<{ message: string }, { token: string; password: string }>({
+      query: (body) => ({ url: '/auth/reset-password', method: 'POST', body }),
+    }),
     register: builder.mutation<{
       message: string
       devOtp?: string
@@ -209,6 +215,60 @@ export const api = createApi({
     }, string>({
       query: (id) => `/products/${id}`,
       providesTags: (result, error, id) => [{ type: 'Product', id }],
+    }),
+    getRecommendations: builder.query<Array<{
+      id: string
+      title: string
+      slug: string
+      price: number
+      mrp?: number | null
+      discountPercent?: number
+      images: string[]
+      ratingAvg?: number | null
+      reviewCount?: number
+      brand?: string
+      subcategory?: string
+      category?: { id: string; name: string; slug: string }
+    }>, { productId?: string; categoryId?: string; limit?: number }>({
+      query: (params) => ({
+        url: '/products',
+        params: { limit: params.limit || 8, categoryId: params.categoryId },
+      }),
+      transformResponse: (response: any, _meta, arg) => {
+        const list = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : []
+        return list.filter((p: any) => p.id !== arg.productId).slice(0, arg.limit || 8)
+      },
+      providesTags: ['Product'],
+    }),
+    getSearchSuggestions: builder.query<{
+      categories: Array<{ id: string; name: string; slug: string }>
+      products: Array<{ id: string; title: string; slug: string; brand: string; price: number; images: string[] }>
+    }, string>({
+      query: (q) => ({
+        url: '/products',
+        params: { q: q.trim(), limit: 6 },
+      }),
+      transformResponse: (response: any, _meta, q) => {
+        const products = Array.isArray(response?.data) ? response.data : []
+        const query = q.toLowerCase()
+        const matchedCategories: Record<string, { id: string; name: string; slug: string }> = {}
+        for (const p of products) {
+          if (p.category && (p.category.name.toLowerCase().includes(query) || p.subcategory?.toLowerCase().includes(query) || query.length >= 2)) {
+            matchedCategories[p.category.id] = p.category
+          }
+        }
+        return {
+          categories: Object.values(matchedCategories),
+          products: products.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            slug: p.slug,
+            brand: p.brand,
+            price: Number(p.price),
+            images: p.images || [],
+          })),
+        }
+      },
     }),
     getSellerProducts: builder.query<{
       data: Array<{
@@ -1008,6 +1068,10 @@ export const api = createApi({
 
 export const {
   useLoginMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
+  useGetRecommendationsQuery,
+  useGetSearchSuggestionsQuery,
   useRegisterMutation,
   useGoogleLoginMutation,
   useResendOtpMutation,

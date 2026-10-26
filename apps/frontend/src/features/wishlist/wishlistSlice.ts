@@ -10,6 +10,13 @@ function loadWishlistProductIds(): string[] {
   if (typeof window === 'undefined') return []
 
   try {
+    const session = window.sessionStorage.getItem(WISHLIST_STORAGE_KEY)
+    if (session) {
+      const productIds: unknown = JSON.parse(session)
+      if (Array.isArray(productIds)) {
+        return productIds.filter((id): id is string => typeof id === 'string')
+      }
+    }
     const stored = window.localStorage.getItem(WISHLIST_STORAGE_KEY)
     const productIds: unknown = stored ? JSON.parse(stored) : []
     return Array.isArray(productIds) ? productIds.filter((id): id is string => typeof id === 'string') : []
@@ -19,9 +26,19 @@ function loadWishlistProductIds(): string[] {
 }
 
 export function persistWishlistProductIds(productIds: string[]) {
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(productIds))
+    const sessionRaw = window.sessionStorage.getItem('tradenest-auth')
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw)
+      const role = parsed?.user?.role
+      if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'SELLER') {
+        return
+      }
+    }
     window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(productIds))
-  }
+  } catch {}
 }
 
 const initialState: WishlistState = { productIds: loadWishlistProductIds() }

@@ -1,12 +1,22 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useAppSelector } from './app/hooks'
-import { ProtectedRoute, GuestRoute, AdminRoute } from './components/RoleBasedRoute'
+import { useAppDispatch, useAppSelector } from './app/hooks'
+import { api } from './app/api'
+import {
+  getPathRoleScope,
+  getRoleScope,
+  getStoredAuthForRole,
+  setCredentials,
+} from './features/auth/authSlice'
+import { ProtectedRoute, GuestRoute, AdminRoute, LogisticsRoute } from './components/RoleBasedRoute'
 import { RoleFallbackRedirect } from './components/RoleFallbackRedirect'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import SellerLayout from './components/SellerLayout'
 import AdminLayout from './components/AdminLayout'
+import LogisticsLayout from './components/LogisticsLayout'
+import LogisticsDashboard from './features/logistics/pages/LogisticsDashboard'
 import Home from './features/catalog/pages/Home'
 import ProductList from './features/catalog/pages/ProductList'
 import ProductDetail from './features/catalog/pages/ProductDetail'
@@ -18,6 +28,8 @@ import AlertsManagement from './features/admin/pages/AlertsManagement'
 import Login from './features/auth/pages/Login'
 import Register from './features/auth/pages/Register'
 import VerifyEmail from './features/auth/pages/VerifyEmail'
+import ForgotPassword from './features/auth/pages/ForgotPassword'
+import ResetPassword from './features/auth/pages/ResetPassword'
 import CartPage from './features/cart/pages/CartPage'
 import Checkout from './features/checkout/pages/Checkout'
 import Profile from './features/profile/pages/Profile'
@@ -55,6 +67,9 @@ function CustomerRoute() {
   if (user?.role === 'SELLER') {
     return <Navigate to="/seller/dashboard" replace />
   }
+  if (user?.role === 'DELIVERY_PARTNER') {
+    return <Navigate to="/logistics/dashboard" replace />
+  }
   return <Outlet />
 }
 
@@ -62,6 +77,9 @@ function SellerRoute() {
   const { user } = useAppSelector((state) => state.auth)
   if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
     return <Navigate to="/admin/dashboard" replace />
+  }
+  if (user?.role === 'DELIVERY_PARTNER') {
+    return <Navigate to="/logistics/dashboard" replace />
   }
   return user?.role === 'SELLER' ? <Outlet /> : <Navigate to="/" replace />
 }
@@ -74,15 +92,47 @@ function RoleSettingsRedirect() {
   if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
     return <Navigate to="/admin/dashboard" replace />
   }
+  if (user?.role === 'DELIVERY_PARTNER') {
+    return <Navigate to="/logistics/dashboard" replace />
+  }
   if (user?.role === 'CUSTOMER') {
     return <Navigate to="/profile" replace />
   }
   return <Navigate to="/login" replace />
 }
 
+function RoleRouteSync() {
+  const location = useLocation()
+  const dispatch = useAppDispatch()
+  const { user } = useAppSelector((state) => state.auth)
+
+  useEffect(() => {
+    const targetScope = getPathRoleScope(location.pathname)
+    if (!targetScope) return
+
+    const currentScope = user?.role ? getRoleScope(user.role) : null
+    if (currentScope !== targetScope) {
+      const stored = getStoredAuthForRole(targetScope)
+      if (stored?.accessToken && stored?.user) {
+        dispatch(
+          setCredentials({
+            user: stored.user as any,
+            accessToken: stored.accessToken,
+            refreshToken: stored.refreshToken || '',
+          })
+        )
+        dispatch(api.util.resetApiState())
+      }
+    }
+  }, [location.pathname, user?.role, dispatch])
+
+  return null
+}
+
 function App() {
   return (
     <ErrorBoundary>
+      <RoleRouteSync />
       <Routes>
         {/* Settings generic redirect */}
         <Route path="/settings" element={<RoleSettingsRedirect />} />
@@ -92,6 +142,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Route>
 
       {/* Catalog & Customer Routes */}
@@ -140,6 +192,16 @@ function App() {
             <Route path="/admin/products" element={<ProductModeration />} />
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/admin/alerts" element={<AlertsManagement />} />
+          </Route>
+        </Route>
+      </Route>
+
+      {/* Logistics & Delivery Partner Routes */}
+      <Route element={<LogisticsLayout />}>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<LogisticsRoute />}>
+            <Route path="/logistics" element={<Navigate to="/logistics/dashboard" replace />} />
+            <Route path="/logistics/dashboard" element={<LogisticsDashboard />} />
           </Route>
         </Route>
       </Route>
