@@ -2,14 +2,14 @@ import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag, Banknote, QrCode, Copy, CheckCircle, Clock, TrendingUp } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, CreditCard, Truck, Shield, Check, Loader2, AlertCircle, Wallet, Smartphone, Tag, Banknote, QrCode, Copy, CheckCircle, Clock, TrendingUp, MapPin, Plus } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
 import { clearCart } from '../../cart/cartSlice'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery, useValidateCouponMutation } from '../../../app/api'
+import { useCreateOrderMutation, useCreatePaymentIntentMutation, useVerifyPaymentMutation, useConfirmPaymentMutation, useGetCartQuery, useGetWalletQuery, useValidateCouponMutation, useGetAddressesQuery, useCreateAddressMutation } from '../../../app/api'
 
 const checkoutSchema = z.object({
   fullName: z.string().min(2),
@@ -76,6 +76,9 @@ export default function Checkout() {
   const [validateCoupon, { isLoading: isValidatingCoupon }] = useValidateCouponMutation()
   const { data: cart, isLoading: cartLoading, error: cartError } = useGetCartQuery(undefined, { skip: !accessToken })
   const { data: wallet } = useGetWalletQuery(undefined, { skip: !accessToken })
+  const { data: savedAddresses = [] } = useGetAddressesQuery(undefined, { skip: !accessToken })
+  const [createAddressMutation] = useCreateAddressMutation()
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
 
   const location = useLocation()
   const initialCouponCode = (location.state as any)?.couponCode || ''
@@ -130,10 +133,29 @@ export default function Checkout() {
     toast.success('Coupon removed')
   }
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: { paymentMethod: 'RAZORPAY' },
   })
+
+  // Auto-fill from default saved address if available
+  useEffect(() => {
+    if (savedAddresses.length > 0 && !selectedAddressId) {
+      const defaultAddr = savedAddresses.find((a) => a.isDefault) || savedAddresses[0]
+      if (defaultAddr) {
+        setSelectedAddressId(defaultAddr.id)
+        setValue('addressLine1', defaultAddr.line1, { shouldValidate: true })
+        setValue('addressLine2', defaultAddr.line2 || '', { shouldValidate: true })
+        setValue('city', defaultAddr.city, { shouldValidate: true })
+        setValue('state', defaultAddr.state, { shouldValidate: true })
+        setValue('postalCode', defaultAddr.postalCode, { shouldValidate: true })
+        if (user) {
+          setValue('fullName', `${user.firstName} ${user.lastName}`.trim(), { shouldValidate: true })
+          if (user.phone) setValue('phone', user.phone, { shouldValidate: true })
+        }
+      }
+    }
+  }, [savedAddresses, selectedAddressId, setValue, user])
 
   const watchedPaymentMethod = watch('paymentMethod')
 
@@ -501,6 +523,20 @@ export default function Checkout() {
 
       const order = orderResult
       const orderId = order.id
+
+      // Optionally persist address to customer address book
+      if (data.saveAddress) {
+        createAddressMutation({
+          label: 'Saved Address',
+          line1: data.addressLine1,
+          line2: data.addressLine2 || '',
+          city: data.city,
+          state: data.state,
+          postalCode: data.postalCode,
+          country: 'IN',
+          isDefault: false,
+        }).catch(() => {})
+      }
 
       // Step 2: Create payment intent
       const paymentResult = await createPaymentIntent({
@@ -1169,6 +1205,80 @@ export default function Checkout() {
                 <Truck className="h-5 w-5 text-primary-600" />
                 Shipping Address
               </h2>
+
+              {/* Saved Address 1-Click Selector */}
+              {savedAddresses.length > 0 && (
+                <div className="mb-6 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wider text-secondary-600 dark:text-secondary-400">
+                      Saved Delivery Addresses (1-Click Select)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAddressId('new')
+                        setValue('addressLine1', '')
+                        setValue('addressLine2', '')
+                        setValue('city', '')
+                        setValue('state', '')
+                        setValue('postalCode', '')
+                      }}
+                      className="text-xs font-semibold text-primary-600 hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Enter New Address</span>
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {savedAddresses.map((addr) => {
+                      const isSelected = selectedAddressId === addr.id
+                      return (
+                        <div
+                          key={addr.id}
+                          onClick={() => {
+                            setSelectedAddressId(addr.id)
+                            setValue('addressLine1', addr.line1, { shouldValidate: true })
+                            setValue('addressLine2', addr.line2 || '', { shouldValidate: true })
+                            setValue('city', addr.city, { shouldValidate: true })
+                            setValue('state', addr.state, { shouldValidate: true })
+                            setValue('postalCode', addr.postalCode, { shouldValidate: true })
+                            if (user) {
+                              setValue('fullName', `${user.firstName} ${user.lastName}`.trim(), { shouldValidate: true })
+                              if (user.phone) setValue('phone', user.phone, { shouldValidate: true })
+                            }
+                          }}
+                          className={clsx(
+                            'p-3.5 rounded-xl border cursor-pointer transition-all text-xs space-y-1 relative',
+                            isSelected
+                              ? 'border-primary-600 bg-primary-50/50 dark:border-primary-500 dark:bg-primary-950/30 ring-2 ring-primary-500/20'
+                              : 'border-secondary-200 dark:border-secondary-700 bg-white dark:bg-secondary-800/60 hover:border-secondary-300'
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-secondary-900 dark:text-secondary-100 flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5 text-primary-600" />
+                              {addr.label || 'Home'}
+                            </span>
+                            {addr.isDefault && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-semibold">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-secondary-600 dark:text-secondary-400 leading-relaxed pt-0.5">
+                            {addr.line1}{addr.line2 ? `, ${addr.line2}` : ''}, {addr.city}, {addr.state} - {addr.postalCode}
+                          </p>
+                          {isSelected && (
+                            <span className="inline-block text-[11px] font-bold text-primary-600 dark:text-primary-400 pt-1">
+                              ✓ Selected for delivery
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">

@@ -1,13 +1,13 @@
 import { motion } from 'framer-motion'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Star, Truck, Shield, RotateCcw, Heart, ShoppingCart, Minus, Plus, Share2, X, Loader2, Zap, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { Star, Truck, Shield, RotateCcw, Heart, ShoppingCart, Minus, Plus, Share2, X, Loader2, Zap, Sparkles, TrendingUp, CheckCircle2, MessageCircle, MessageSquare, HelpCircle, Send, Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { addItem } from '../../cart/cartSlice'
 import { toggle } from '../../wishlist/wishlistSlice'
 import { useAppDispatch, useAppSelector } from '../../../app/hooks'
-import { useAddToCartMutation, useGetProductQuery, useGetProductReviewsQuery, useCreateProductReviewMutation, useGetRecommendationsQuery } from '../../../app/api'
+import { useAddToCartMutation, useGetProductQuery, useGetProductReviewsQuery, useCreateProductReviewMutation, useGetRecommendationsQuery, useAddToWishlistMutation, useRemoveFromWishlistMutation, useGetProductQuestionsQuery, useAskProductQuestionMutation, useAnswerProductQuestionMutation } from '../../../app/api'
 import { getApiErrorMessage } from '../../../app/apiError'
 
 export default function ProductDetail() {
@@ -17,6 +17,7 @@ export default function ProductDetail() {
   const cartItems = useAppSelector((s) => s.cart.items)
   const wishlistIds = useAppSelector((s) => s.wishlist.productIds)
   const accessToken = useAppSelector((s) => s.auth.accessToken)
+  const currentUser = useAppSelector((s) => s.auth.user)
   const [addToCart] = useAddToCartMutation()
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
@@ -30,6 +31,19 @@ export default function ProductDetail() {
   // Reseller state
   const [showResellModal, setShowResellModal] = useState(false)
   const [customResalePrice, setCustomResalePrice] = useState<number | ''>('')
+
+  // WhatsApp share state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+  const [whatsAppMargin, setWhatsAppMargin] = useState<number>(300)
+  const [whatsAppType, setWhatsAppType] = useState<'standard' | 'reseller'>('reseller')
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false)
+
+  // Customer Q&A state
+  const [showAskModal, setShowAskModal] = useState(false)
+  const [questionText, setQuestionText] = useState('')
+  const [questionFilter, setQuestionFilter] = useState('')
+  const [answeringQuestionId, setAnsweringQuestionId] = useState<string | null>(null)
+  const [answerText, setAnswerText] = useState('')
   
   // The catalog endpoint accepts both the product ID and its unique slug.
   const { data: product, isLoading, error } = useGetProductQuery(slug || '', { 
@@ -38,11 +52,18 @@ export default function ProductDetail() {
   const { data: reviewsData } = useGetProductReviewsQuery(product?.id || '', {
     skip: !product?.id,
   })
+  const { data: questionsData } = useGetProductQuestionsQuery(product?.id || '', {
+    skip: !product?.id,
+  })
   const { data: recommendations = [], isLoading: isLoadingRecs } = useGetRecommendationsQuery(
     { productId: product?.id, categoryId: product?.category?.id || (product as any)?.categoryId, limit: 4 },
     { skip: !product?.id }
   )
   const [createProductReview, { isLoading: isSubmittingReview }] = useCreateProductReviewMutation()
+  const [askProductQuestion, { isLoading: isSubmittingQuestion }] = useAskProductQuestionMutation()
+  const [answerProductQuestion, { isLoading: isSubmittingAnswer }] = useAnswerProductQuestionMutation()
+  const [addToWishlistMutation] = useAddToWishlistMutation()
+  const [removeFromWishlistMutation] = useRemoveFromWishlistMutation()
   const errorStatus = error && 'status' in error ? error.status : undefined
 
   const isInWishlist = product ? wishlistIds.includes(product.id) : false
@@ -85,10 +106,22 @@ export default function ProductDetail() {
     navigate('/checkout')
   }
 
-  const handleToggleWishlist = () => {
+  const handleToggleWishlist = async () => {
     if (product) {
+      const willBeInWishlist = !isInWishlist
       dispatch(toggle(product.id))
-      toast.success(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist')
+      toast.success(willBeInWishlist ? 'Added to wishlist' : 'Removed from wishlist')
+      if (accessToken) {
+        try {
+          if (willBeInWishlist) {
+            await addToWishlistMutation(product.id).unwrap()
+          } else {
+            await removeFromWishlistMutation(product.id).unwrap()
+          }
+        } catch (e) {
+          console.warn('Failed to sync wishlist with backend:', e)
+        }
+      }
     }
   }
 
@@ -278,14 +311,22 @@ export default function ProductDetail() {
                   setCustomResalePrice(Math.round(Number(product.price) * 1.3))
                   setShowResellModal(true)
                 }}
-                className="btn border border-emerald-500 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-600 flex-1 min-w-[200px] flex items-center justify-center gap-2 font-medium"
+                className="btn border border-emerald-500 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-600 flex-1 min-w-[180px] flex items-center justify-center gap-2 font-medium"
               >
                 <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                 💼 Resell & Earn Margin
               </button>
               <button
+                onClick={() => setShowWhatsAppModal(true)}
+                className="btn bg-[#25D366] hover:bg-[#20ba59] text-white flex-1 min-w-[180px] flex items-center justify-center gap-2 font-semibold shadow-sm"
+                title="Share on WhatsApp with custom margin"
+              >
+                <MessageCircle className="h-5 w-5 fill-current" />
+                WhatsApp Share
+              </button>
+              <button
                 onClick={handleToggleWishlist}
-                className={clsx('btn flex-1 min-w-[160px] flex items-center justify-center gap-2', isInWishlist ? 'btn-primary' : 'btn-outline')}
+                className={clsx('btn flex-1 min-w-[140px] flex items-center justify-center gap-2', isInWishlist ? 'btn-primary' : 'btn-outline')}
               >
                 <Heart className={clsx('h-5 w-5', isInWishlist ? 'fill-current' : '')} />
                 {isInWishlist ? 'In Wishlist' : 'Wishlist'}
@@ -300,7 +341,7 @@ export default function ProductDetail() {
                   }
                 }}
                 className="btn btn-outline flex items-center justify-center gap-2"
-                title="Share product"
+                title="Share product link"
               >
                 <Share2 className="h-5 w-5" />
                 Share
@@ -523,6 +564,399 @@ export default function ProductDetail() {
             </div>
           )}
         </section>
+
+        {/* Customer Questions & Answers Section */}
+        <section className="mt-12 border-t border-secondary-200 pt-10 dark:border-secondary-700">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <HelpCircle className="h-6 w-6 text-primary-600" />
+                <h2 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">
+                  Customer Questions & Answers
+                </h2>
+              </div>
+              <p className="text-sm text-secondary-500 mt-1">
+                Have doubts about this product? Find answers from verified buyers and the seller.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (!accessToken) {
+                  toast.error('Please sign in to ask a question')
+                  return
+                }
+                setShowAskModal(true)
+              }}
+              className="btn btn-outline inline-flex items-center gap-2 self-start sm:self-auto"
+            >
+              <MessageSquare className="h-4 w-4 text-primary-600" />
+              Ask a Question
+            </button>
+          </div>
+
+          {/* Search bar inside questions */}
+          {(questionsData?.data && questionsData.data.length > 0) && (
+            <div className="mb-6">
+              <input
+                type="text"
+                placeholder="Search questions & answers..."
+                value={questionFilter}
+                onChange={(e) => setQuestionFilter(e.target.value)}
+                className="w-full sm:max-w-md rounded-lg border border-secondary-300 bg-white px-4 py-2 text-sm text-secondary-900 focus:border-primary-500 focus:outline-none dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100"
+              />
+            </div>
+          )}
+
+          {/* Questions List */}
+          {(!questionsData?.data || questionsData.data.length === 0) ? (
+            <div className="rounded-xl border border-dashed border-secondary-300 p-8 text-center dark:border-secondary-700">
+              <HelpCircle className="mx-auto h-8 w-8 text-secondary-400" />
+              <p className="mt-2 text-sm text-secondary-600 dark:text-secondary-400">
+                No questions asked yet for this product. Be the first to ask!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {questionsData.data
+                .filter((q) =>
+                  !questionFilter ||
+                  q.question.toLowerCase().includes(questionFilter.toLowerCase()) ||
+                  (q.answer && q.answer.toLowerCase().includes(questionFilter.toLowerCase()))
+                )
+                .map((q) => (
+                  <div key={q.id} className="card p-5 space-y-3 bg-white dark:bg-secondary-800/60 border border-secondary-200 dark:border-secondary-700/60">
+                    <div className="flex items-start gap-3">
+                      <span className="font-bold text-base text-primary-600 dark:text-primary-400">Q:</span>
+                      <div className="flex-1">
+                        <p className="font-semibold text-secondary-900 dark:text-secondary-100 text-sm sm:text-base">
+                          {q.question}
+                        </p>
+                        <p className="text-xs text-secondary-400 mt-1">
+                          Asked by {q.userName || 'Shopper'} • {new Date(q.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {q.answer ? (
+                      <div className="flex items-start gap-3 pl-2 sm:pl-4 border-l-2 border-emerald-500/50 bg-secondary-50/70 dark:bg-secondary-900/40 p-3 rounded-r-lg">
+                        <span className="font-bold text-base text-emerald-600 dark:text-emerald-400">A:</span>
+                        <div className="flex-1">
+                          <p className="text-sm text-secondary-700 dark:text-secondary-200 leading-relaxed">
+                            {q.answer}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {q.answeredBy || 'Verified Seller'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pl-2 sm:pl-4 text-xs text-secondary-500 italic flex items-center justify-between">
+                        <span>Awaiting answer from seller...</span>
+                        {(currentUser?.role === 'SELLER' || currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN') && (
+                          <button
+                            onClick={() => {
+                              setAnsweringQuestionId(answeringQuestionId === q.id ? null : q.id)
+                              setAnswerText('')
+                            }}
+                            className="btn btn-outline btn-xs text-primary-600 border-primary-500"
+                          >
+                            Answer this
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline Seller/Admin Answer Input */}
+                    {answeringQuestionId === q.id && (
+                      <div className="pt-2 pl-4 border-t border-secondary-200 dark:border-secondary-700 space-y-2">
+                        <textarea
+                          rows={2}
+                          placeholder="Type seller answer here..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          className="w-full rounded-lg border border-secondary-300 bg-white p-2.5 text-sm text-secondary-900 focus:border-primary-500 focus:outline-none dark:border-secondary-600 dark:bg-secondary-800 dark:text-secondary-100"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setAnsweringQuestionId(null)}
+                            className="btn btn-outline btn-xs"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            disabled={!answerText.trim() || isSubmittingAnswer}
+                            onClick={async () => {
+                              try {
+                                await answerProductQuestion({
+                                  questionId: q.id,
+                                  answer: answerText.trim(),
+                                }).unwrap()
+                                toast.success('Answer published!')
+                                setAnsweringQuestionId(null)
+                                setAnswerText('')
+                              } catch (err: any) {
+                                toast.error(err?.data?.message || 'Failed to submit answer')
+                              }
+                            }}
+                            className="btn btn-primary btn-xs inline-flex items-center gap-1"
+                          >
+                            {isSubmittingAnswer ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                            Publish Answer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+        </section>
+
+        {/* Ask Question Modal */}
+        {showAskModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="card w-full max-w-lg p-6 space-y-4 bg-white dark:bg-secondary-900 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-secondary-200 dark:border-secondary-700 pb-3">
+                <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-50 flex items-center gap-2">
+                  <HelpCircle className="h-5 w-5 text-primary-600" />
+                  Ask a Question
+                </h3>
+                <button
+                  onClick={() => setShowAskModal(false)}
+                  className="p-1 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 text-secondary-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (!product || !questionText.trim()) return
+                  try {
+                    await askProductQuestion({
+                      productId: product.id,
+                      question: questionText.trim(),
+                    }).unwrap()
+                    toast.success('Your question has been submitted!')
+                    setShowAskModal(false)
+                    setQuestionText('')
+                  } catch (err: any) {
+                    toast.error(err?.data?.message || err?.message || 'Failed to submit question')
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <p className="text-xs text-secondary-500 mb-1">Product</p>
+                  <p className="font-medium text-secondary-900 dark:text-secondary-100 text-sm line-clamp-1">
+                    {product.title}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700 dark:text-secondary-300 mb-1">
+                    Your Question
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    value={questionText}
+                    onChange={(e) => setQuestionText(e.target.value)}
+                    placeholder="e.g. Does this support fast charging? What is the warranty period?"
+                    className="w-full rounded-lg border border-secondary-300 bg-white px-3.5 py-2 text-sm text-secondary-900 focus:border-primary-500 focus:outline-none dark:border-secondary-600 dark:bg-secondary-800 dark:text-secondary-100"
+                  />
+                  <p className="text-xs text-secondary-500 mt-1">
+                    Keep your question focused on product features, specifications, and compatibility.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAskModal(false)}
+                    className="btn btn-outline"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingQuestion || !questionText.trim()}
+                    className="btn btn-primary inline-flex items-center gap-2"
+                  >
+                    {isSubmittingQuestion && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isSubmittingQuestion ? 'Posting...' : 'Post Question'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* 1-Click WhatsApp Reseller & Share Modal */}
+        {showWhatsAppModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="card w-full max-w-lg p-6 space-y-5 bg-white dark:bg-secondary-900 shadow-2xl border border-secondary-200 dark:border-secondary-700">
+              <div className="flex items-center justify-between border-b border-secondary-200 dark:border-secondary-700 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-[#25D366]/10 text-[#25D366]">
+                    <MessageCircle className="h-6 w-6 fill-current" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-50">
+                      Share via WhatsApp
+                    </h3>
+                    <p className="text-xs text-secondary-500">Instant catalog & product promotion on WhatsApp</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowWhatsAppModal(false)}
+                  className="p-1 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 text-secondary-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Mode Selector */}
+              <div className="grid grid-cols-2 gap-2 bg-secondary-100 dark:bg-secondary-800/80 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setWhatsAppType('reseller')}
+                  className={clsx(
+                    'py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5',
+                    whatsAppType === 'reseller'
+                      ? 'bg-white dark:bg-secondary-900 text-emerald-600 dark:text-emerald-400 shadow'
+                      : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
+                  )}
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Reseller Mode (Margin)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWhatsAppType('standard')}
+                  className={clsx(
+                    'py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5',
+                    whatsAppType === 'standard'
+                      ? 'bg-white dark:bg-secondary-900 text-primary-600 shadow'
+                      : 'text-secondary-600 dark:text-secondary-400 hover:text-secondary-900'
+                  )}
+                >
+                  <Share2 className="h-4 w-4" />
+                  Direct Share (Best Price)
+                </button>
+              </div>
+
+              {/* Reseller Margin Input */}
+              {whatsAppType === 'reseller' && (
+                <div className="space-y-3 p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                      Your Reseller Profit Margin per Unit:
+                    </label>
+                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                      Cost: ₹{Number(product.price).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 font-bold text-sm">₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={whatsAppMargin}
+                      onChange={(e) => setWhatsAppMargin(Math.max(0, Number(e.target.value) || 0))}
+                      placeholder="e.g. 300"
+                      className="w-full rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-secondary-800 pl-8 pr-4 py-2 text-sm font-bold text-secondary-900 dark:text-secondary-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 pt-1">
+                    <span>Final Price for Buyer:</span>
+                    <span className="font-extrabold text-sm">
+                      ₹{(Number(product.price) + Number(whatsAppMargin || 0)).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Message Preview Box */}
+              <div>
+                <p className="text-xs font-semibold text-secondary-700 dark:text-secondary-300 mb-1.5">
+                  WhatsApp Message Preview:
+                </p>
+                <div className="rounded-xl border border-secondary-200 dark:border-secondary-700 bg-[#EFEAE2] dark:bg-secondary-800/70 p-3.5 text-xs text-secondary-900 dark:text-secondary-100 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto leading-relaxed">
+                  {`🛍️ *Special Offer on TradeNest!*
+
+*${product.title}*
+🏷️ *Deal Price:* ₹${(Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)).toLocaleString()} ${product.mrp && Number(product.mrp) > (Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)) ? `(MRP: ~₹${Number(product.mrp).toLocaleString()}~)` : ''}
+${product.brand ? `🏢 *Brand:* ${product.brand}\n` : ''}📦 *Key Highlights:*
+• 100% Genuine Quality Product
+• Fast & Reliable Doorstep Delivery 🚚
+• Cash on Delivery (COD) Available 💵
+• 7-Day Easy Replacement / Returns 🔄
+
+🔗 *Tap to view product & order:*
+${window.location.href}`}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const message = `🛍️ *Special Offer on TradeNest!*
+
+*${product.title}*
+🏷️ *Deal Price:* ₹${(Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)).toLocaleString()} ${product.mrp && Number(product.mrp) > (Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)) ? `(MRP: ~₹${Number(product.mrp).toLocaleString()}~)` : ''}
+${product.brand ? `🏢 *Brand:* ${product.brand}\n` : ''}📦 *Key Highlights:*
+• 100% Genuine Quality Product
+• Fast & Reliable Doorstep Delivery 🚚
+• Cash on Delivery (COD) Available 💵
+• 7-Day Easy Replacement / Returns 🔄
+
+🔗 *Tap to view product & order:*
+${window.location.href}`
+                    navigator.clipboard.writeText(message)
+                    setCopiedWhatsApp(true)
+                    toast.success('WhatsApp text copied to clipboard!')
+                    setTimeout(() => setCopiedWhatsApp(false), 2500)
+                  }}
+                  className="btn btn-outline flex-1 flex items-center justify-center gap-1.5 text-xs"
+                >
+                  {copiedWhatsApp ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  {copiedWhatsApp ? 'Copied!' : 'Copy Text'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const message = `🛍️ *Special Offer on TradeNest!*
+
+*${product.title}*
+🏷️ *Deal Price:* ₹${(Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)).toLocaleString()} ${product.mrp && Number(product.mrp) > (Number(product.price) + (whatsAppType === 'reseller' ? Number(whatsAppMargin || 0) : 0)) ? `(MRP: ~₹${Number(product.mrp).toLocaleString()}~)` : ''}
+${product.brand ? `🏢 *Brand:* ${product.brand}\n` : ''}📦 *Key Highlights:*
+• 100% Genuine Quality Product
+• Fast & Reliable Doorstep Delivery 🚚
+• Cash on Delivery (COD) Available 💵
+• 7-Day Easy Replacement / Returns 🔄
+
+🔗 *Tap to view product & order:*
+${window.location.href}`
+                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, '_blank')
+                  }}
+                  className="btn bg-[#25D366] hover:bg-[#20ba59] text-white flex-1 flex items-center justify-center gap-1.5 text-xs font-bold shadow"
+                >
+                  <MessageCircle className="h-4 w-4 fill-current" />
+                  Open in WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Review Modal */}
         {showReviewModal && (

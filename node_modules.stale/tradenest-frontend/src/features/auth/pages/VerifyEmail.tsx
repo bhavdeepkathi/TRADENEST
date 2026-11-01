@@ -25,7 +25,6 @@ export default function VerifyEmail() {
   const [resendCountdown, setResendCountdown] = useState(0)
 
   const email = searchParams.get('email') || ''
-  const devOtp = searchParams.get('otp') || ''
 
   const [verifyOtp] = useVerifyOtpMutation()
   const [resendOtp, { isLoading: isResending }] = useResendOtpMutation()
@@ -39,15 +38,9 @@ export default function VerifyEmail() {
   } = useForm<VerifyForm>({
     resolver: zodResolver(verifySchema),
     defaultValues: {
-      otp: devOtp,
+      otp: '',
     },
   })
-
-  useEffect(() => {
-    if (devOtp && devOtp.length === 6) {
-      setValue('otp', devOtp, { shouldValidate: true })
-    }
-  }, [devOtp, setValue])
 
   const otpValue = watch('otp') || ''
 
@@ -55,10 +48,7 @@ export default function VerifyEmail() {
     if (resendCountdown > 0 || isResending) return
     try {
       const res = await resendOtp({ email }).unwrap()
-      if (res.devOtp) {
-        setValue('otp', res.devOtp, { shouldValidate: true })
-      }
-      toast.success(res.message || 'Verification code dispatched successfully!')
+      toast.success(res.message || 'Verification code dispatched to your email!')
       setResendCountdown(60)
       const interval = setInterval(() => {
         setResendCountdown(c => {
@@ -164,12 +154,6 @@ export default function VerifyEmail() {
               📬 If you don&apos;t see it in Primary, check your <strong>Spam / Junk</strong> folder.
             </p>
           </div>
-
-          {devOtp && (
-            <div className="mb-6 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-700 dark:text-indigo-300 text-center font-medium">
-              ⚡ <strong>Dev Auto-Fill:</strong> Backend test code <span className="font-mono font-bold tracking-widest text-indigo-900 dark:text-indigo-200">{devOtp}</span> has been pre-filled!
-            </div>
-          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Hidden input for form submission */}

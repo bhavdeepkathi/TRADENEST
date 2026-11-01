@@ -105,6 +105,7 @@ export async function sendOrderPlacedEmail(
   const name = customer.firstName || 'Valued Customer';
   const total = Number(order.total || 0).toFixed(2);
   const items = order.items || [];
+  const deliveryOtp = (order.deliveryOtp || '4821').toString().trim();
 
   const itemsHtml = items.map((item: any) => `
     <tr>
@@ -123,6 +124,15 @@ export async function sendOrderPlacedEmail(
       <strong>Order ID:</strong> #${shortId}<br/>
       <strong>Date:</strong> ${new Date(order.createdAt || Date.now()).toLocaleDateString()}<br/>
       <strong>Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Seller Approval</span>
+    </div>
+
+    <!-- Doorstep Delivery OTP Card -->
+    <div style="background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border: 2px dashed #059669; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">🔐 Doorstep Delivery Handover OTP</div>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #047857; margin: 10px 0;">${deliveryOtp}</div>
+      <p style="margin: 0; font-size: 13px; color: #065f46; line-height: 1.5;">
+        <strong>Important:</strong> Please keep this 4-digit code confidential. Share it with your TRADENEST delivery driver <strong>only</strong> when you receive your package at your doorstep to verify handover.
+      </p>
     </div>
 
     <table class="items-table">
@@ -164,7 +174,7 @@ export async function sendOrderPlacedEmail(
   `;
 
   const html = getBaseTemplate(`Order #${shortId} Placed`, body);
-  const text = `Hi ${name},\n\nYour order #${shortId} for ₹${total} has been placed successfully. Awaiting seller approval.\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
+  const text = `Hi ${name},\n\nYour order #${shortId} for ₹${total} has been placed successfully.\n\n🔐 YOUR DOORSTEP DELIVERY OTP: ${deliveryOtp}\n(Share this 4-digit code with the delivery partner ONLY upon package handover at your doorstep.)\n\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
 
   return sendMailSafe(customer.email, `🛒 Order Placed - TRADENEST #${shortId}`, html, text);
 }
@@ -180,6 +190,7 @@ export async function sendPaymentConfirmedEmail(
   const isCod = payment?.provider === 'COD';
   const provider = isCod ? 'Cash on Delivery (COD)' : (payment?.provider || 'Online Payment');
   const providerRef = isCod ? 'Cash upon delivery' : (payment?.providerRef || payment?.id || 'Completed');
+  const deliveryOtp = (order.deliveryOtp || '4821').toString().trim();
 
   const body = `
     <h2 class="title">${isCod ? 'Order Confirmed - Cash on Delivery' : 'Payment Confirmed!'}</h2>
@@ -194,6 +205,15 @@ export async function sendPaymentConfirmedEmail(
       <strong>Status:</strong> Confirmed
     </div>
 
+    <!-- Doorstep Delivery OTP Card -->
+    <div style="background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border: 2px dashed #059669; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">🔐 Doorstep Delivery Handover OTP</div>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #047857; margin: 10px 0;">${deliveryOtp}</div>
+      <p style="margin: 0; font-size: 13px; color: #065f46; line-height: 1.5;">
+        <strong>Important:</strong> Please keep this 4-digit code safe. You will need to share this OTP with your delivery driver at your doorstep to receive your shipment.
+      </p>
+    </div>
+
     <p style="font-size: 14px; color: #475569;">
       The seller has been notified. You will receive an update once the seller approves and ships your items.
     </p>
@@ -205,8 +225,8 @@ export async function sendPaymentConfirmedEmail(
 
   const html = getBaseTemplate(`${isCod ? 'Order' : 'Payment'} Confirmed - #${shortId}`, body);
   const text = isCod
-    ? `Hi ${name},\n\nYour order #${shortId} for ₹${total} is confirmed via Cash on Delivery. Please keep ₹${total} in cash ready upon delivery.\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`
-    : `Hi ${name},\n\nPayment of ₹${total} for order #${shortId} was successful (${provider} ref: ${providerRef}).\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
+    ? `Hi ${name},\n\nYour order #${shortId} for ₹${total} is confirmed via Cash on Delivery.\n\n🔐 YOUR DOORSTEP DELIVERY OTP: ${deliveryOtp}\n(Share this code with the driver ONLY upon handover.)\n\nPlease keep ₹${total} in cash ready upon delivery.\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`
+    : `Hi ${name},\n\nPayment of ₹${total} for order #${shortId} was successful (${provider} ref: ${providerRef}).\n\n🔐 YOUR DOORSTEP DELIVERY OTP: ${deliveryOtp}\n(Share this code with the driver ONLY upon handover.)\n\nView details: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
 
   const subject = isCod 
     ? `💵 Order Confirmed (Cash on Delivery) - TRADENEST #${shortId}` 
@@ -222,22 +242,29 @@ export async function sendOrderStatusEmail(
 ) {
   const shortId = order.id.slice(0, 8);
   const name = customer.firstName || 'Valued Customer';
+  const deliveryOtp = (order.deliveryOtp || '4821').toString().trim();
 
   let subject = `Order Status Update - TRADENEST #${shortId}`;
   let headline = `Order Status: ${status}`;
   let message = `Your order status has been updated to ${status}.`;
   let badgeColor = '#6366f1';
+  let showOtpCard = false;
 
   if (status === 'CONFIRMED') {
     subject = `✅ Order Approved by Seller - TRADENEST #${shortId}`;
     headline = 'Great News! Your Order Has Been Approved';
     message = `The merchant has reviewed and <strong>approved</strong> your order #${shortId}. Your items are currently being prepared for shipment.`;
     badgeColor = '#10b981';
-  } else if (status === 'SHIPPED') {
-    subject = `🚚 Order Shipped - TRADENEST #${shortId}`;
-    headline = 'Your Order is on the Way!';
-    message = `Your order #${shortId} has been packed and handed over to our delivery partner. It will reach your doorstep soon.`;
+  } else if (status === 'SHIPPED' || status === 'OUT_FOR_DELIVERY') {
+    subject = status === 'OUT_FOR_DELIVERY' 
+      ? `🚚 Out for Delivery Today! - TRADENEST #${shortId}` 
+      : `🚚 Order Shipped - TRADENEST #${shortId}`;
+    headline = status === 'OUT_FOR_DELIVERY' ? 'Your Package is Out for Delivery!' : 'Your Order is on the Way!';
+    message = status === 'OUT_FOR_DELIVERY'
+      ? `Your delivery partner is en-route with order #${shortId}. Please share your 4-digit Doorstep Delivery OTP with the driver upon arrival.`
+      : `Your order #${shortId} has been packed and handed over to our delivery partner. It will reach your doorstep soon.`;
     badgeColor = '#3b82f6';
+    showOtpCard = true;
   } else if (status === 'DELIVERED') {
     subject = `📦 Order Delivered - TRADENEST #${shortId}`;
     headline = 'Package Delivered!';
@@ -250,6 +277,17 @@ export async function sendOrderStatusEmail(
     badgeColor = '#ef4444';
   }
 
+  const otpBoxHtml = showOtpCard ? `
+    <!-- Doorstep Delivery OTP Card -->
+    <div style="background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border: 2px dashed #059669; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">🔐 Doorstep Delivery Handover OTP</div>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #047857; margin: 10px 0;">${deliveryOtp}</div>
+      <p style="margin: 0; font-size: 13px; color: #065f46; line-height: 1.5;">
+        <strong>Important:</strong> Please provide this 4-digit code to the delivery driver <strong>only</strong> when you receive your package.
+      </p>
+    </div>
+  ` : '';
+
   const body = `
     <h2 class="title">${headline}</h2>
     <p>Hi <strong>${name}</strong>,</p>
@@ -261,13 +299,16 @@ export async function sendOrderStatusEmail(
       <strong>Total:</strong> ₹${Number(order.total || 0).toFixed(2)}
     </div>
 
+    ${otpBoxHtml}
+
     <div style="text-align: center; margin-top: 24px;">
       <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}" class="btn">Track Order Details</a>
     </div>
   `;
 
   const html = getBaseTemplate(subject, body);
-  const text = `Hi ${name},\n\nOrder #${shortId} update: ${headline}.\nStatus: ${status}.\nView: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
+  const otpTextSnippet = showOtpCard ? `\n\n🔐 YOUR DOORSTEP DELIVERY OTP: ${deliveryOtp}\n(Share this code with the driver ONLY upon handover)\n` : '';
+  const text = `Hi ${name},\n\nOrder #${shortId} update: ${headline}.\nStatus: ${status}.${otpTextSnippet}\nView: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
 
   return sendMailSafe(customer.email, subject, html, text);
 }
@@ -323,4 +364,137 @@ export async function sendNewOrderReceivedSellerEmail(
   const text = `Hi ${name},\n\nYou have received a new order #${shortId} for ₹${total}.\nView & approve it at: ${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/orders?search=${order.id}`;
 
   return sendMailSafe(sellerUser.email, `🔔 New Order Received - TRADENEST #${shortId}`, html, text);
+}
+
+export async function sendReturnRequestSellerEmail(
+  order: any,
+  sellerUser: { email: string; firstName?: string; storeName?: string },
+  reason: string,
+  returnItemTitles?: string[]
+) {
+  const shortId = order.id.slice(0, 8);
+  const name = sellerUser.firstName || sellerUser.storeName || 'Seller';
+  const body = `
+    <h2 class="title" style="color: #9333ea;">🔄 Customer Return Request Received</h2>
+    <p>Hi <strong>${name}</strong>,</p>
+    <p>A customer has submitted a return request for Order #${shortId}. Please inspect the reason below and take action on your Seller Orders dashboard.</p>
+    
+    <div class="order-box">
+      <strong>Order ID:</strong> #${shortId}<br/>
+      <strong>Return Reason:</strong> <span style="color: #9333ea; font-weight: 600;">${reason}</span><br/>
+      ${returnItemTitles && returnItemTitles.length > 0 ? `<strong>Item(s):</strong> ${returnItemTitles.join(', ')}<br/>` : ''}
+      <strong>Customer:</strong> ${order.shippingAddress?.fullName || 'Customer'}<br/>
+      <strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+    </div>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/orders?status=RETURN_REQUESTED" class="btn" style="background-color: #9333ea;">Review Return Request</a>
+    </div>
+  `;
+
+  const html = getBaseTemplate(`Return Request for Order #${shortId}`, body);
+  const text = `Hi ${name},\n\nA return request was submitted for Order #${shortId}.\nReason: ${reason}\nReview it at: ${config.CORS_ORIGIN || 'http://localhost:3000'}/seller/orders?status=RETURN_REQUESTED`;
+
+  return sendMailSafe(sellerUser.email, `⚠️ Return Request - TRADENEST #${shortId}`, html, text);
+}
+
+export async function sendReturnDecisionCustomerEmail(
+  order: any,
+  customer: { email: string; firstName: string; lastName?: string },
+  status: 'APPROVED' | 'REJECTED',
+  rejectionReason?: string
+) {
+  const shortId = order.id.slice(0, 8);
+  const name = `${customer.firstName} ${customer.lastName || ''}`.trim() || 'Customer';
+  const isApproved = status === 'APPROVED';
+
+  const body = `
+    <h2 class="title" style="color: ${isApproved ? '#059669' : '#dc2626'};">
+      ${isApproved ? '✅ Return Request Approved!' : '❌ Return Request Update'}
+    </h2>
+    <p>Hi <strong>${name}</strong>,</p>
+    <p>${isApproved
+      ? `Your return request for Order #${shortId} has been <strong>approved</strong> by the seller. Our logistics fleet has scheduled reverse pickup for your parcel.`
+      : `Your return request for Order #${shortId} was reviewed and could not be approved at this time.`
+    }</p>
+    
+    <div class="order-box">
+      <strong>Order ID:</strong> #${shortId}<br/>
+      <strong>Return Status:</strong> <span style="color: ${isApproved ? '#059669' : '#dc2626'}; font-weight: 600;">${isApproved ? 'Approved & Pickup Scheduled' : 'Rejected'}</span><br/>
+      ${!isApproved && rejectionReason ? `<strong>Reason:</strong> ${rejectionReason}<br/>` : ''}
+      <strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+    </div>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}" class="btn">View Order Details</a>
+    </div>
+  `;
+
+  const html = getBaseTemplate(`Return Update for Order #${shortId}`, body);
+  const text = `Hi ${name},\n\nYour return request for Order #${shortId} is ${isApproved ? 'APPROVED' : 'REJECTED'}.\nView details at: ${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id}`;
+
+  return sendMailSafe(customer.email, `${isApproved ? '✅' : '❌'} Return Request Update - TRADENEST #${shortId}`, html, text);
+}
+
+export async function sendDoorstepOtpEmail(
+  order: any,
+  customer: { email: string; firstName: string; lastName?: string },
+  newOtp: string,
+  type: 'DELIVERY' | 'RETURN_PICKUP',
+  driver?: { name?: string; phone?: string; vehicle?: string }
+) {
+  const shortId = order.id ? order.id.slice(0, 8) : (order.orderNumber || 'TN-ORD');
+  const name = `${customer.firstName} ${customer.lastName || ''}`.trim() || 'Customer';
+  const isReturn = type === 'RETURN_PICKUP';
+
+  const subject = isReturn
+    ? `🔐 Fresh Return Handover OTP: ${newOtp} - Order #${shortId}`
+    : `🔐 Fresh Doorstep Delivery OTP: ${newOtp} - Order #${shortId}`;
+
+  const body = `
+    <h2 class="title" style="color: ${isReturn ? '#9333ea' : '#059669'};">
+      ${isReturn ? '🔄 Return Pickup Verification' : '🚚 Doorstep Delivery Verification'}
+    </h2>
+    <p>Hi <strong>${name}</strong>,</p>
+    <p>${isReturn
+      ? `Your TRADENEST delivery partner is at your doorstep to pick up the return parcel for Order #${shortId}.`
+      : `Your TRADENEST delivery partner is at your doorstep with your package for Order #${shortId}.`
+    }</p>
+    
+    <!-- Big OTP Card -->
+    <div style="background: linear-gradient(135deg, ${isReturn ? '#faf5ff' : '#ecfdf5'} 0%, ${isReturn ? '#f3e8ff' : '#f0fdf4'} 100%); border: 2px dashed ${isReturn ? '#9333ea' : '#059669'}; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: ${isReturn ? '#6b21a8' : '#065f46'}; text-transform: uppercase; letter-spacing: 1.5px;">
+        ${isReturn ? 'Fresh Return Handover OTP' : 'Fresh Doorstep Delivery OTP'}
+      </div>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 42px; font-weight: 800; letter-spacing: 12px; color: ${isReturn ? '#7e22ce' : '#047857'}; margin: 12px 0;">
+        ${newOtp}
+      </div>
+      <p style="margin: 0; font-size: 13px; font-weight: 600; color: #dc2626; line-height: 1.5;">
+        ⚠️ Note: Any old OTP is now expired and no longer valid.
+      </p>
+      <p style="margin: 8px 0 0 0; font-size: 12px; color: ${isReturn ? '#581c87' : '#065f46'}; line-height: 1.5;">
+        ${isReturn
+          ? 'Share this 4-digit code with the courier ONLY after you hand over the return package.'
+          : 'Share this 4-digit code with your courier partner ONLY after receiving your package.'
+        }
+      </p>
+    </div>
+
+    ${driver?.name ? `
+    <div class="order-box">
+      <strong>Delivery Partner:</strong> ${driver.name} (${driver.vehicle || 'Vehicle'})<br/>
+      ${driver.phone ? `<strong>Contact:</strong> ${driver.phone}<br/>` : ''}
+      <strong>Time Requested:</strong> ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
+    </div>
+    ` : ''}
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="${config.CORS_ORIGIN || 'http://localhost:3000'}/orders/${order.id || ''}" class="btn" style="background-color: ${isReturn ? '#9333ea' : '#059669'};">View Live Tracking</a>
+    </div>
+  `;
+
+  const html = getBaseTemplate(subject, body);
+  const text = `Hi ${name},\n\nYour delivery partner is at your doorstep.\n${isReturn ? 'RETURN HANDOVER OTP' : 'DOORSTEP DELIVERY OTP'}: ${newOtp}\n⚠️ Note: Any old OTP is no longer valid.\nShare this with the driver only upon parcel handover.\nOrder: #${shortId}`;
+
+  return sendMailSafe(customer.email, subject, html, text);
 }

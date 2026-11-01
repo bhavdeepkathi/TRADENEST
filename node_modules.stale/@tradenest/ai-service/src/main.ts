@@ -26,6 +26,7 @@ async function bootstrap() {
   app.use('/health', healthRouter);
   app.use('/api/ai/recommendations', recommendationRouter);
   app.use('/api/ai/analytics', analyticsRouter);
+  app.use('/api/ai', recommendationRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   await connectRedis();

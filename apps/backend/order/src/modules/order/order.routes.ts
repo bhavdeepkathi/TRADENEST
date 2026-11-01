@@ -5,7 +5,7 @@ import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError, generateInvoiceNumber } from '@tradenest/common';
 import { OrderQuerySchema, CreateOrderDtoSchema, OrderStatus, PaymentProvider, PaymentStatus } from '@tradenest/common';
 import { generateInvoicePdf } from './invoice.service';
-import { sendOrderPlacedEmail, sendPaymentConfirmedEmail, sendOrderStatusEmail, sendNewOrderReceivedSellerEmail } from '../../utils/orderMailer';
+import { sendOrderPlacedEmail, sendPaymentConfirmedEmail, sendOrderStatusEmail, sendNewOrderReceivedSellerEmail, sendReturnRequestSellerEmail, sendReturnDecisionCustomerEmail } from '../../utils/orderMailer';
 
 const router = Router();
 
@@ -274,7 +274,155 @@ router.post('/:id/return', asyncHandler(async (req, res) => {
     },
   });
 
+  // Notify all sellers involved in this order with in-app notification & email
+  const distinctSellerIds = Array.from(new Set(order.items.map((i: any) => i.sellerId).filter(Boolean)));
+  for (const sId of distinctSellerIds) {
+    try {
+      const seller = await prisma.seller.findFirst({
+        where: { OR: [{ id: sId }, { userId: sId }] },
+      });
+      const notifyUserId = seller?.userId || sId;
+      await createInAppNotification(
+        notifyUserId,
+        'ORDER',
+        'Customer Return Request Received',
+        `A customer submitted a return request for Order #${order.id.slice(0, 8)}. Reason: ${reason.trim()}`,
+        { orderId: order.id, returnId: returnRequest.id }
+      );
+
+      const sellerUser = await findUserForEmail(notifyUserId);
+      if (sellerUser) {
+        const itemTitles = order.items.filter((i: any) => i.sellerId === sId).map((i: any) => i.title);
+        sendReturnRequestSellerEmail(
+          order,
+          { email: sellerUser.email, firstName: sellerUser.firstName, storeName: seller?.storeName },
+          reason.trim(),
+          itemTitles
+        ).catch((err: any) => console.warn('Failed to send return request email to seller:', err));
+      }
+    } catch (notifErr) {
+      console.warn('Error sending seller return notifications:', notifErr);
+    }
+  }
+
   res.status(201).json(returnRequest);
+}));
+
+// POST /api/orders/:id/cancel - Customer or Admin cancels order before dispatch
+router.post('/:id/cancel', asyncHandler(async (req, res) => {
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
+  if (!userId) {
+    throw new ValidationError('User ID not found in request');
+  }
+
+  const { reason } = req.body || {};
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: { items: true, payment: true, shipment: true },
+  });
+  if (!order) throw new NotFoundError('Order');
+
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  if (order.userId !== userId && !isAdmin) {
+    throw new ValidationError('Unauthorized to cancel this order');
+  }
+
+  if (order.status === OrderStatus.CANCELLED) {
+    throw new ValidationError('Order is already cancelled');
+  }
+
+  if (order.status === OrderStatus.SHIPPED || order.status === OrderStatus.DELIVERED) {
+    throw new ValidationError('Order is already in transit or delivered. Please request a return instead.');
+  }
+
+  const cancelReason = (typeof reason === 'string' && reason.trim()) ? reason.trim() : 'Cancelled by customer';
+
+  // 1. Update order status
+  const updatedOrder = await prisma.order.update({
+    where: { id: order.id },
+    data: { status: OrderStatus.CANCELLED },
+  });
+
+  // 2. Restock inventory
+  for (const item of order.items) {
+    await prisma.inventory.updateMany({
+      where: { productId: item.productId },
+      data: { quantity: { increment: item.quantity } },
+    }).catch((err: any) => console.warn('Failed to restock item:', err));
+  }
+
+  // 3. Update shipment if exists
+  if (order.shipment) {
+    await prisma.shipment.update({
+      where: { id: order.shipment.id },
+      data: { status: 'CANCELLED' },
+    }).catch((err: any) => console.warn('Failed to cancel shipment:', err));
+  }
+
+  // 4. Auto-refund to Wallet if payment was SUCCESS
+  let refundedToWallet = false;
+  if (order.payment && order.payment.status === PaymentStatus.SUCCESS) {
+    const refundAmount = Number(order.total);
+    const wallet = await prisma.wallet.upsert({
+      where: { userId: order.userId },
+      create: { userId: order.userId, balance: refundAmount },
+      update: { balance: { increment: refundAmount } },
+    });
+
+    await prisma.walletTxn.create({
+      data: {
+        walletId: wallet.id,
+        type: 'CREDIT',
+        amount: refundAmount,
+        description: `Refund for cancelled order #${order.id.slice(0, 8)}`,
+        reference: order.id,
+      },
+    });
+
+    await prisma.payment.update({
+      where: { id: order.payment.id },
+      data: { status: PaymentStatus.REFUNDED },
+    });
+
+    await prisma.refund.create({
+      data: {
+        paymentId: order.payment.id,
+        amount: refundAmount,
+        reason: cancelReason,
+        status: 'COMPLETED',
+        processedAt: new Date(),
+      },
+    }).catch(() => {});
+
+    refundedToWallet = true;
+  }
+
+  // 5. In-app notifications
+  await createInAppNotification(
+    order.userId,
+    'ORDER',
+    'Order Cancelled',
+    `Your order #${order.id.slice(0, 8)} was cancelled successfully.${refundedToWallet ? ' ₹' + Number(order.total).toLocaleString('en-IN') + ' has been credited to your TRADENEST Wallet.' : ''}`,
+    { orderId: order.id }
+  );
+
+  // 6. Email notification
+  const user = await findUserForEmail(order.userId);
+  if (user) {
+    sendOrderStatusEmail(order, user, OrderStatus.CANCELLED).catch((err: any) =>
+      console.warn('Failed to send cancellation email:', err)
+    );
+  }
+
+  res.json({
+    success: true,
+    message: refundedToWallet
+      ? 'Order cancelled successfully. Full refund has been credited to your TRADENEST Wallet.'
+      : 'Order cancelled successfully.',
+    order: updatedOrder,
+    refundedToWallet,
+  });
 }));
 
 // POST /api/orders - Create order from cart
@@ -382,6 +530,10 @@ router.post('/', asyncHandler(async (req, res) => {
     }
 
     const finalTotal = total - discount;
+    const isReseller = Boolean((req.body as any).isReseller);
+    const customerBillAmount = (req.body as any).customerBillAmount ? Number((req.body as any).customerBillAmount) : finalTotal;
+    const resellerMargin = isReseller ? Math.max(0, customerBillAmount - finalTotal) : 0;
+    const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
     const shippingAddress = { ...data.shippingAddress };
     const billingAddress = { ...shippingAddress };
@@ -396,6 +548,11 @@ router.post('/', asyncHandler(async (req, res) => {
         discount,
         total: finalTotal,
         couponCode,
+        isResellerOrder: isReseller,
+        resellerUserId: isReseller ? userId : null,
+        customerBillAmount,
+        resellerMargin,
+        deliveryOtp,
         shippingAddress,
         billingAddress,
         items: { create: orderItems },
@@ -406,6 +563,38 @@ router.post('/', asyncHandler(async (req, res) => {
       },
     });
   });
+
+  // Auto-create persistent Shipment record for Logistics Fleet
+  try {
+    const shortOrderNumber = `TN-ORD-${order.id.slice(0, 8).toUpperCase()}`;
+    const shipAddr = typeof order.shippingAddress === 'string' ? JSON.parse(order.shippingAddress) : (order.shippingAddress || {});
+    const custName = shipAddr.fullName || shipAddr.name || 'Customer';
+    const custPhone = shipAddr.phone || '+91 98201 44892';
+    const fullAddr = `${shipAddr.line1 || shipAddr.addressLine1 || ''} ${shipAddr.line2 || shipAddr.addressLine2 || ''}, ${shipAddr.city || 'Mumbai'}, ${shipAddr.state || 'MH'}`.trim();
+    await prisma.shipment.upsert({
+      where: { orderId: order.id },
+      create: {
+        orderId: order.id,
+        orderNumber: shortOrderNumber,
+        customerName: custName,
+        customerPhone: custPhone,
+        deliveryAddress: fullAddr || 'Mumbai Central',
+        city: shipAddr.city || 'Mumbai',
+        pincode: shipAddr.postalCode || '400001',
+        distance: `${(1.2 + Math.random() * 3.5).toFixed(1)} km`,
+        status: 'PENDING_PICKUP',
+        itemsCount: order.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0),
+        totalWeight: `${Math.max(0.5, order.items.length * 0.6).toFixed(1)} kg`,
+        isReseller: order.isResellerOrder,
+        customerBillAmount: order.customerBillAmount || order.total,
+        platformBaseCost: order.total,
+        deliveryOtp: order.deliveryOtp || '4821',
+      },
+      update: {},
+    });
+  } catch (shipErr) {
+    console.warn('Failed to auto-create shipment:', shipErr);
+  }
 
   // 1. Notify Customer in-app
   await createInAppNotification(
@@ -422,7 +611,7 @@ router.post('/', asyncHandler(async (req, res) => {
     for (const sId of sellerIds) {
       const sellerRecord = await prisma.seller.findFirst({
         where: { OR: [{ id: sId }, { userId: sId }] },
-        select: { userId: true },
+        select: { id: true, userId: true, storeName: true },
       });
       const targetSellerUserId = sellerRecord?.userId || sId;
       if (targetSellerUserId) {
@@ -433,6 +622,14 @@ router.post('/', asyncHandler(async (req, res) => {
           `You received new order #${order.id.slice(0, 8)} (${order.items.length} item(s), ₹${Number(order.total)}). Please review and approve.`,
           { orderId: order.id, customerId: userId, type: 'NEW_ORDER' }
         );
+
+        const sellerUser = await findUserForEmail(targetSellerUserId);
+        if (sellerUser && sellerUser.email) {
+          const sellerItems = order.items.filter((i: any) => i.sellerId === sId);
+          sendNewOrderReceivedSellerEmail(order, { email: sellerUser.email, firstName: sellerUser.firstName, storeName: sellerRecord?.storeName }, sellerItems).catch((err) => {
+            console.warn('Failed to send seller new order email:', err);
+          });
+        }
       }
     }
   } catch (sellerNotifErr) {
@@ -814,6 +1011,44 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     body = `Your order #${order.id.slice(0, 8)} has been shipped and is on the way.`;
   } else if (status === 'DELIVERED') {
     title = 'Order Delivered Successfully!';
+    // Update shipment status to DELIVERED
+    await prisma.shipment.updateMany({
+      where: { orderId: order.id },
+      data: { status: 'DELIVERED', deliveredAt: new Date() },
+    }).catch(() => {});
+
+    // If Reseller order, credit Reseller's wallet with profit margin!
+    if (order.isResellerOrder && order.resellerUserId && Number(order.resellerMargin || 0) > 0) {
+      try {
+        let wallet = await prisma.wallet.findUnique({ where: { userId: order.resellerUserId } });
+        if (!wallet) {
+          wallet = await prisma.wallet.create({ data: { userId: order.resellerUserId, balance: 0 } });
+        }
+        await prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: order.resellerMargin! } },
+        });
+        await prisma.walletTxn.create({
+          data: {
+            walletId: wallet.id,
+            type: 'CREDIT',
+            amount: order.resellerMargin!,
+            description: `Reseller Margin Profit for order #${order.id.slice(0, 8)}`,
+            reference: order.id,
+          },
+        });
+        console.log(`[ResellerPayout] Credited ₹${Number(order.resellerMargin)} to reseller ${order.resellerUserId}`);
+        await createInAppNotification(
+          order.resellerUserId,
+          'WALLET',
+          'Reseller Profit Credited! 🎉',
+          `Congratulations! Your profit margin of ₹${Number(order.resellerMargin)} for order #${order.id.slice(0, 8)} has been credited to your TRADENEST Wallet!`,
+          { orderId: order.id, amount: Number(order.resellerMargin), type: 'RESELLER_PAYOUT' }
+        );
+      } catch (walletErr) {
+        console.warn('Failed to credit reseller margin to wallet:', walletErr);
+      }
+    }
     body = `Your order #${order.id.slice(0, 8)} has been delivered. Thank you for shopping with TRADENEST!`;
     // If order was Cash on Delivery, mark payment as SUCCESS (Cash Collected)
     await prisma.payment.updateMany({
@@ -943,29 +1178,52 @@ router.get('/seller/:sellerId', asyncHandler(async (req, res) => {
 
 // GET /api/orders/seller/:sellerId/orders - Get distinct orders for a seller (grouped by order)
 router.get('/seller/:sellerId/orders', asyncHandler(async (req, res) => {
-  const query = OrderQuerySchema.parse(req.query);
-  const { page, limit, sort, order, status, startDate, endDate } = query;
+  const rawStatus = req.query.status as string | undefined;
+  const queryObj = { ...req.query };
+  if (rawStatus === 'RETURN_REQUESTED' || rawStatus === 'All' || rawStatus === 'RETURNED') {
+    delete queryObj.status;
+  }
+  const query = OrderQuerySchema.parse(queryObj);
+  const { page, limit, sort, order, startDate, endDate } = query;
   let rawSellerId = req.params.sellerId;
+  const userRole = req.headers['x-user-role'] as string;
+  const userId = req.headers['x-user-id'] as string;
 
   if (rawSellerId === 'me') {
-    rawSellerId = req.headers['x-user-id'] as string;
+    rawSellerId = userId;
   }
 
   if (!rawSellerId) {
     throw new ValidationError('Seller ID not found in request');
   }
 
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
   const sellerIds = await resolveSellerIds(rawSellerId);
 
-  const where: any = {
-    items: {
-      some: {
-        sellerId: { in: sellerIds },
-      },
-    },
-  };
+  const where: any = (isAdmin && sellerIds.length <= 1)
+    ? {}
+    : {
+        items: {
+          some: {
+            sellerId: { in: sellerIds },
+          },
+        },
+      };
 
-  if (status) where.status = status;
+  if (rawStatus === 'RETURN_REQUESTED') {
+    where.returns = {
+      some: {
+        status: 'PENDING',
+      },
+    };
+  } else if (rawStatus === 'RETURNED') {
+    where.OR = [
+      { status: OrderStatus.RETURNED },
+      { returns: { some: { status: { in: ['APPROVED', 'COMPLETED'] } } } },
+    ];
+  } else if (rawStatus && rawStatus !== 'All') {
+    where.status = rawStatus;
+  }
   if (startDate || endDate) {
     where.createdAt = {
       ...(startDate && { gte: new Date(startDate) }),
@@ -982,7 +1240,7 @@ router.get('/seller/:sellerId/orders', asyncHandler(async (req, res) => {
         payment: true,
         returns: true,
         items: {
-          where: { sellerId: { in: sellerIds } },
+          where: (isAdmin && sellerIds.length <= 1) ? undefined : { sellerId: { in: sellerIds } },
           include: { product: true },
         },
       },
@@ -1067,6 +1325,7 @@ router.patch('/:id/return/process', asyncHandler(async (req, res) => {
     where: { id: activeReturn.id },
     data: {
       status,
+      rejectionReason: status === 'REJECTED' ? (rejectionReason || 'Return criteria not met') : null,
     },
   });
 
@@ -1087,6 +1346,28 @@ router.patch('/:id/return/process', asyncHandler(async (req, res) => {
     }
   }
 
+  // Notify customer of decision via In-App Notification and Email
+  try {
+    await createInAppNotification(
+      order.userId,
+      'ORDER',
+      status === 'APPROVED' ? 'Return Approved & Logistics Scheduled' : 'Return Request Declined',
+      status === 'APPROVED'
+        ? `Your return request for Order #${order.id.slice(0, 8)} was approved by the seller. Reverse pickup is being scheduled.`
+        : `Your return request for Order #${order.id.slice(0, 8)} was declined. Reason: ${rejectionReason || 'Return criteria not met'}`,
+      { orderId: order.id, status }
+    );
+
+    const customerUser = await findUserForEmail(order.userId);
+    if (customerUser) {
+      sendReturnDecisionCustomerEmail(order, customerUser, status, rejectionReason).catch((err: any) =>
+        console.warn('Failed to send return decision email to customer:', err)
+      );
+    }
+  } catch (notifErr) {
+    console.warn('Error sending customer return decision notification:', notifErr);
+  }
+
   res.json({
     message: status === 'APPROVED' ? 'Return request approved and order marked as Returned' : 'Return request rejected',
     returnRequest: updatedReturn,
@@ -1094,3 +1375,36 @@ router.patch('/:id/return/process', asyncHandler(async (req, res) => {
 }));
 
 export { router as orderRouter };
+// Auto-release abandoned reservations older than 15 minutes to prevent phantom stockouts
+async function releaseExpiredReservations() {
+  try {
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const expiredOrders = await prisma.order.findMany({
+      where: {
+        status: OrderStatus.PENDING,
+        createdAt: { lt: fifteenMinutesAgo },
+        payment: { status: { not: PaymentStatus.SUCCESS } },
+      },
+      include: { items: true },
+    });
+
+    for (const expOrder of expiredOrders) {
+      await prisma.$transaction(async (tx) => {
+        for (const item of expOrder.items) {
+          await tx.inventory.update({
+            where: { productId: item.productId },
+            data: { reserved: { decrement: item.quantity } },
+          }).catch(() => {});
+        }
+        await tx.order.update({
+          where: { id: expOrder.id },
+          data: { status: OrderStatus.CANCELLED },
+        });
+      });
+      console.log(`[AutoRelease] Released abandoned reserved inventory for order ${expOrder.id}`);
+    }
+  } catch (err) {
+    console.warn('[AutoRelease] Error releasing expired reservations:', err);
+  }
+}
+setInterval(releaseExpiredReservations, 5 * 60 * 1000);

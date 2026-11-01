@@ -9,6 +9,8 @@ import { config } from './config';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 import { orderRouter } from './modules/order/order.routes';
 import { cartRouter } from './modules/cart/cart.routes';
+import { wishlistRouter } from './modules/wishlist/wishlist.routes';
+import { logisticsRouter } from './modules/logistics/logistics.routes';
 import { healthRouter } from './modules/health/health.routes';
 import { connectRedis } from './utils/redis';
 import { prisma } from './utils/prisma';
@@ -22,8 +24,9 @@ async function bootstrap() {
   
   const limiter = rateLimit({
     windowMs: config.RATE_LIMIT_WINDOW_MS,
-    max: config.RATE_LIMIT_MAX_REQUESTS,
+    max: config.NODE_ENV === 'development' ? 5000 : config.RATE_LIMIT_MAX_REQUESTS,
     message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
+    skip: (req) => config.NODE_ENV === 'development' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'),
   });
   app.use('/api/', limiter);
 
@@ -37,6 +40,8 @@ async function bootstrap() {
   app.use('/health', healthRouter);
   app.use('/api/orders', orderRouter);
   app.use('/api/cart', cartRouter);
+  app.use('/api/wishlist', wishlistRouter);
+  app.use('/api/logistics', logisticsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

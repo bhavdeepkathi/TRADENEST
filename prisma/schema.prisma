@@ -22,6 +22,16 @@ enum Role {
   SELLER
   ADMIN
   SUPER_ADMIN
+  DELIVERY_PARTNER
+}
+
+enum ShipmentStatus {
+  PENDING_PICKUP
+  CLAIMED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURN_IN_TRANSIT
 }
 
 enum OrderStatus {
@@ -120,6 +130,7 @@ model User {
   superAdmin      SuperAdmin?
   deviceTokens    DeviceToken[]
   preferences     NotificationPreference?
+  deliveryPartner DeliveryPartner?
 
   @@index([email])
   @@index([role])
@@ -404,9 +415,15 @@ model Order {
   coupon          Coupon?      @relation(fields: [couponCode], references: [code])
   shippingAddress Json
   billingAddress  Json
+  isResellerOrder Boolean      @default(false)
+  resellerUserId  String?
+  customerBillAmount Decimal?  @db.Decimal(12, 2)
+  resellerMargin  Decimal?     @db.Decimal(12, 2)
+  deliveryOtp     String?
   items           OrderItem[]
   payment         Payment?
   invoice         Invoice?
+  shipment        Shipment?
   returns         ReturnRequest[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -728,5 +745,64 @@ model InfraAlert {
 
   @@index([source, severity])
   @@index([acknowledged])
+  @@index([createdAt])
+}
+
+// ===========================================
+// LOGISTICS & FLEET MODELS
+// ===========================================
+
+model DeliveryPartner {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType     String   @default("Motorbike")
+  vehicleNumber   String?
+  hubLocation     String   @default("Mumbai Central Logistics Hub #04")
+  phone           String?
+  isOnline        Boolean  @default(true)
+  currentLat      Float?
+  currentLng      Float?
+  totalDeliveries Int      @default(0)
+  rating          Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isOnline])
+  @@index([hubLocation])
+}
+
+model Shipment {
+  id                 String         @id @default(cuid())
+  orderId            String         @unique
+  order              Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderNumber        String         @unique
+  driverId           String?
+  driverName         String?
+  driverPhone        String?
+  driverVehicle      String?
+  status             ShipmentStatus @default(PENDING_PICKUP)
+  customerName       String
+  customerPhone      String
+  deliveryAddress    String
+  city               String         @default("Mumbai")
+  pincode            String         @default("400001")
+  distance           String         @default("2.5 km")
+  itemsCount         Int            @default(1)
+  totalWeight        String         @default("1.0 kg")
+  isReseller         Boolean        @default(false)
+  customerBillAmount Decimal        @db.Decimal(12, 2) @default(0)
+  platformBaseCost   Decimal        @db.Decimal(12, 2) @default(0)
+  deliveryOtp        String?
+  isReturnPickup     Boolean        @default(false)
+  returnReason       String?
+  returnHubAddress   String?
+  claimedAt          DateTime?
+  deliveredAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([status])
+  @@index([driverId])
   @@index([createdAt])
 }

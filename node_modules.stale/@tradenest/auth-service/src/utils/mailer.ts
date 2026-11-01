@@ -10,7 +10,7 @@ function getTransporter(): nodemailer.Transporter {
     transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
-      secure: config.SMTP_SECURE,
+      secure: config.SMTP_SECURE || config.SMTP_PORT === 465,
       ...(isAuthAvailable
         ? {
             auth: {

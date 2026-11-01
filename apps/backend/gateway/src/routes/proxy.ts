@@ -41,6 +41,13 @@ const serviceRoutes: ServiceRoute[] = [
     authRequired: false,
   },
   {
+    path: '/api/logistics',
+    target: gatewayConfig.ORDER_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { '^/logistics': '/api/logistics' },
+    authRequired: false,
+  },
+  {
     path: '/api/orders',
     target: gatewayConfig.ORDER_SERVICE_URL,
     changeOrigin: true,
@@ -52,6 +59,13 @@ const serviceRoutes: ServiceRoute[] = [
     target: gatewayConfig.ORDER_SERVICE_URL,
     changeOrigin: true,
     pathRewrite: { '^/cart': '/api/cart' },
+    authRequired: true,
+  },
+  {
+    path: '/api/wishlist',
+    target: gatewayConfig.ORDER_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { '^/wishlist': '/api/wishlist' },
     authRequired: true,
   },
   {
@@ -80,7 +94,7 @@ const serviceRoutes: ServiceRoute[] = [
     target: gatewayConfig.AI_SERVICE_URL,
     changeOrigin: true,
     pathRewrite: { '^/ai': '/api/ai' },
-    authRequired: true,
+    authRequired: false,
   },
   {
     path: '/api/notifications',

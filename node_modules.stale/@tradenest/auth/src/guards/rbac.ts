@@ -21,6 +21,7 @@ export function mapTokenToUser(claims: TokenClaims): AuthenticatedUser {
 
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   CUSTOMER: 1,
+  DELIVERY_PARTNER: 2,
   SELLER: 2,
   ADMIN: 3,
   SUPER_ADMIN: 4,

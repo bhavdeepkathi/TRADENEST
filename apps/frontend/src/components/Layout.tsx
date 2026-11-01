@@ -5,10 +5,12 @@ import { logout } from '../features/auth/authSlice'
 import { clearCart } from '../features/cart/cartSlice'
 import { useAppDispatch } from '../app/hooks'
 import { Menu, X, ShoppingCart, Heart, User, LogOut, Sun, Moon, Facebook, Twitter, Instagram, Youtube as YouTube, Mail, Phone, MapPin, Truck, Shield, RefreshCw, Star, Bell } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { clsx } from 'clsx'
 import NotificationDrawer from './NotificationDrawer'
-import { useGetUnreadNotificationCountQuery } from '../app/api'
+import AiChatAssistant from './AiChatAssistant'
+import { useGetUnreadNotificationCountQuery, useGetWishlistQuery } from '../app/api'
+import { setWishlist } from '../features/wishlist/wishlistSlice'
 
 const footerLinks = {
   company: [
@@ -86,6 +88,16 @@ export default function Layout() {
     skip: !isAuthenticated,
     pollingInterval: 5000,
   })
+
+  const { data: wishlistData } = useGetWishlistQuery(undefined, {
+    skip: !isAuthenticated,
+  })
+
+  useEffect(() => {
+    if (wishlistData?.items) {
+      dispatch(setWishlist(wishlistData.items.map((i: any) => i.productId)))
+    }
+  }, [wishlistData, dispatch])
 
   const handleLogout = () => {
     dispatch(logout({ scope: 'customer' }))
@@ -413,6 +425,7 @@ export default function Layout() {
         </div>
       </footer>
       <NotificationDrawer isOpen={notificationOpen} onClose={() => setNotificationOpen(false)} />
+      <AiChatAssistant />
     </div>
   )
 }

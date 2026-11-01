@@ -1,11 +1,11 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Camera, Loader2, Save, ArrowLeft, AlertTriangle, AlertCircle } from 'lucide-react'
+import { X, Camera, Loader2, Save, ArrowLeft, AlertTriangle, AlertCircle, DownloadCloud, Zap, Sparkles } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUploadProductImageMutation, useGetMySellerStatusQuery } from '../../../app/api'
+import { useGetCategoriesQuery, useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUploadProductImageMutation, useGetMySellerStatusQuery, useImportAmazonProductMutation } from '../../../app/api'
 
 const productSchema = z.object({
   title: z.string().min(3, 'Product name must be at least 3 characters'),
@@ -53,6 +53,42 @@ export default function AddProduct() {
   const [createProduct] = useCreateProductMutation()
   const [updateProduct] = useUpdateProductMutation()
   const [uploadProductImage] = useUploadProductImageMutation()
+  const [importAmazonProduct] = useImportAmazonProductMutation()
+  const [amazonUrlInput, setAmazonUrlInput] = useState('')
+  const [isImportingAmazon, setIsImportingAmazon] = useState(false)
+
+  const handleImportAmazon = async () => {
+    if (!amazonUrlInput.trim()) {
+      toast.error('Please enter an Amazon product URL or ASIN')
+      return
+    }
+    setIsImportingAmazon(true)
+    try {
+      const res = await importAmazonProduct({ urlOrAsin: amazonUrlInput.trim() }).unwrap()
+      if (res.product) {
+        toast.success(res.message || 'Product imported successfully from Amazon!')
+        reset({
+          title: res.product.title,
+          description: res.product.description || 'Imported from Amazon with authentic specifications and warranty.',
+          categoryId: res.product.categoryId,
+          brand: res.product.brand || 'Amazon',
+          subcategory: res.product.subcategory || 'General',
+          price: Number(res.product.price),
+          mrp: Number(res.product.mrp || res.product.price),
+          discountPercent: res.product.discountPercent || 0,
+          stockQuantity: 50,
+          tags: Array.isArray(res.product.tags) ? res.product.tags.join(', ') : '',
+          images: res.product.images || [],
+        })
+        setImageUrls(res.product.images || [])
+        setAmazonUrlInput('')
+      }
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Failed to import product from Amazon.')
+    } finally {
+      setIsImportingAmazon(false)
+    }
+  }
 
   const isKycApproved = sellerStatus?.kycStatus === 'APPROVED'
   const isKycRejected = sellerStatus?.kycStatus === 'REJECTED'
@@ -225,6 +261,86 @@ export default function AddProduct() {
                 You will be able to create and publish products once your KYC verification is approved.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* 1-Click Amazon Product Importer Widget */}
+      {!isEditing && (
+        <div className="rounded-2xl border border-amber-300 dark:border-amber-700/60 bg-gradient-to-br from-amber-50 via-orange-50/40 to-amber-100/30 dark:from-amber-950/30 dark:via-secondary-900 dark:to-orange-950/20 p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/70 dark:border-amber-800/40">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm shrink-0">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-secondary-900 dark:text-secondary-100 flex items-center gap-2">
+                  <span>1-Click Amazon & Marketplace Importer</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
+                    LIVE ASIN FETCHER
+                  </span>
+                </h3>
+                <p className="text-xs text-secondary-600 dark:text-secondary-400">
+                  Paste any product link or 10-digit ASIN from Amazon India to auto-fill title, real INR prices, HD images, and specs.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={amazonUrlInput}
+                onChange={(e) => setAmazonUrlInput(e.target.value)}
+                placeholder="Paste Amazon product URL or ASIN (e.g. B0CHWV2WYK or https://www.amazon.in/dp/...)"
+                className="w-full px-4 py-2.5 rounded-xl border border-secondary-300 dark:border-secondary-700 bg-white dark:bg-secondary-800 text-xs text-secondary-900 dark:text-secondary-100 placeholder-secondary-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleImportAmazon()
+                  }
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={isImportingAmazon || !amazonUrlInput.trim()}
+              onClick={handleImportAmazon}
+              className="btn btn-primary btn-sm px-5 py-2.5 text-xs bg-amber-500 hover:bg-amber-600 border-none text-white font-bold flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+            >
+              {isImportingAmazon ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Importing from Amazon...</span>
+                </>
+              ) : (
+                <>
+                  <DownloadCloud className="h-4 w-4" />
+                  <span>Import & Auto-Fill</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 text-[11px] text-secondary-500">
+            <span className="font-semibold text-secondary-600 dark:text-secondary-400">Try quick ASINs:</span>
+            {[
+              { label: 'iPhone 15 Pro', asin: 'B0CHWV2WYK' },
+              { label: 'Sony WH-1000XM5', asin: 'B09XS7JWHH' },
+              { label: 'MacBook Air M3', asin: 'B0CX21MPB7' },
+              { label: 'PS5 Slim Console', asin: 'B0CL5KNB9M' },
+            ].map((item) => (
+              <button
+                key={item.asin}
+                type="button"
+                onClick={() => setAmazonUrlInput(`https://www.amazon.in/dp/${item.asin}`)}
+                className="px-2 py-0.5 rounded-md bg-white dark:bg-secondary-800 border border-secondary-200 dark:border-secondary-700 text-secondary-700 dark:text-secondary-300 hover:border-amber-400 hover:text-amber-600 transition-colors cursor-pointer text-[10px]"
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
       )}

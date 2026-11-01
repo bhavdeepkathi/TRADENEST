@@ -1,7 +1,7 @@
-import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw, Save, AlertTriangle, AlertCircle } from 'lucide-react'
+import { PlusCircle, Search, Edit, Trash2, ChevronDown, ChevronUp, Loader2, RotateCcw, Save, AlertTriangle, AlertCircle, Download, Upload, FileSpreadsheet, X, CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useGetSellerProductsQuery, useDeleteProductMutation, useUpdateProductMutation, useGetMySellerStatusQuery } from '../../../app/api'
+import { useGetSellerProductsQuery, useDeleteProductMutation, useUpdateProductMutation, useGetMySellerStatusQuery, useGetCategoriesQuery, useCreateProductMutation } from '../../../app/api'
 import toast from 'react-hot-toast'
 
 const statusStyles: Record<string, string> = {
@@ -36,8 +36,15 @@ export default function Inventory() {
 
   const { data, isLoading, error, refetch } = useGetSellerProductsQuery({ page, limit: 10, status: statusFilter !== 'all' ? statusFilter : undefined })
   const { data: sellerStatus } = useGetMySellerStatusQuery()
+  const { data: categoriesData } = useGetCategoriesQuery()
   const [deleteProduct] = useDeleteProductMutation()
   const [updateProduct, { isLoading: isUpdatingStock }] = useUpdateProductMutation()
+  const [createProduct] = useCreateProductMutation()
+
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [csvRawText, setCsvRawText] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importStats, setImportStats] = useState<{ total: number; success: number; failed: number } | null>(null)
 
   const products = data?.data || []
   const meta = data?.meta
@@ -109,6 +116,128 @@ export default function Inventory() {
     }
   }
 
+  const downloadSampleCSV = () => {
+    const sample = `title,brand,category,price,mrp,stockQuantity,description
+Wireless Bluetooth Earbuds,AudioPro,Electronics,1499,2999,50,High quality noise cancelling wireless earbuds
+Cotton Casual Slim Fit Shirt,UrbanStyle,Fashion,899,1999,30,Premium 100% breathable cotton slim fit shirt
+Stainless Steel Water Bottle 1L,HydroFit,Home & Kitchen,499,999,100,Double walled insulated vacuum stainless steel bottle`
+    const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'tradenest_sample_product_import.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportCSV = () => {
+    if (products.length === 0) {
+      toast.error('No products available to export')
+      return
+    }
+    const headers = ['title', 'brand', 'category', 'price', 'mrp', 'stockQuantity', 'status', 'description']
+    const rows = products.map((p) => [
+      `"${(p.title || '').replace(/"/g, '""')}"`,
+      `"${((p as any).brand || '').replace(/"/g, '""')}"`,
+      `"${(p.category?.name || 'General').replace(/"/g, '""')}"`,
+      p.price,
+      p.mrp || p.price,
+      p.inventory?.quantity ?? 0,
+      p.status,
+      `"${(p.description || '').replace(/"/g, '""')}"`,
+    ])
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `tradenest_inventory_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${products.length} products to CSV`)
+  }
+
+  const parseCSVRows = (text: string) => {
+    const lines = text.trim().split(/\r?\n/).filter((line) => line.trim().length > 0)
+    if (lines.length < 2) return []
+    const headerLine = lines[0].toLowerCase()
+    const headers = headerLine.split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''))
+
+    const titleIdx = headers.findIndex((h) => h.includes('title') || h.includes('name'))
+    const priceIdx = headers.findIndex((h) => h.includes('price'))
+    const mrpIdx = headers.findIndex((h) => h.includes('mrp'))
+    const stockIdx = headers.findIndex((h) => h.includes('stock') || h.includes('qty') || h.includes('quantity'))
+    const brandIdx = headers.findIndex((h) => h.includes('brand'))
+    const catIdx = headers.findIndex((h) => h.includes('category') || h.includes('cat'))
+    const descIdx = headers.findIndex((h) => h.includes('desc'))
+
+    const parsed = []
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',')
+      const cleanRow = row.map((cell) => cell.trim().replace(/^"|"$/g, '').replace(/""/g, '"'))
+
+      const title = titleIdx !== -1 && cleanRow[titleIdx] ? cleanRow[titleIdx] : `Product ${i}`
+      const price = priceIdx !== -1 ? Math.max(0, Number(cleanRow[priceIdx]) || 100) : 100
+      const mrp = mrpIdx !== -1 ? Math.max(price, Number(cleanRow[mrpIdx]) || price) : Math.round(price * 1.3)
+      const stock = stockIdx !== -1 ? Math.max(0, parseInt(cleanRow[stockIdx], 10) || 10) : 10
+      const brand = brandIdx !== -1 && cleanRow[brandIdx] ? cleanRow[brandIdx] : 'TradeNest Select'
+      const catName = catIdx !== -1 && cleanRow[catIdx] ? cleanRow[catIdx] : 'General'
+      const desc = descIdx !== -1 && cleanRow[descIdx] ? cleanRow[descIdx] : `${title} - High quality product offered on TradeNest marketplace.`
+
+      const matchedCat = categoriesData?.find((c) => c.name.toLowerCase() === catName.toLowerCase()) || categoriesData?.[0]
+      const categoryId = matchedCat?.id || 'general'
+
+      parsed.push({
+        title,
+        price,
+        mrp,
+        stockQuantity: stock,
+        brand,
+        categoryName: matchedCat?.name || catName,
+        categoryId,
+        description: desc,
+      })
+    }
+    return parsed
+  }
+
+  const handleExecuteBulkImport = async () => {
+    const rows = parseCSVRows(csvRawText)
+    if (rows.length === 0) {
+      toast.error('No valid product rows found in CSV')
+      return
+    }
+    setIsImporting(true)
+    setImportStats(null)
+    let success = 0
+    let failed = 0
+    for (const item of rows) {
+      try {
+        await createProduct({
+          title: item.title,
+          price: item.price,
+          mrp: item.mrp,
+          stockQuantity: item.stockQuantity,
+          brand: item.brand,
+          categoryId: item.categoryId,
+          description: item.description,
+          images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&h=600&fit=crop'],
+        }).unwrap()
+        success++
+      } catch (err) {
+        failed++
+      }
+    }
+    setIsImporting(false)
+    setImportStats({ total: rows.length, success, failed })
+    if (success > 0) {
+      toast.success(`Successfully imported ${success} products!`)
+      refetch()
+    }
+  }
+
+  const parsedPreview = csvRawText.trim() ? parseCSVRows(csvRawText) : []
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -116,13 +245,34 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Inventory</h1>
           <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage your product catalog and stock levels.</p>
         </div>
-        <Link
-          to="/seller/products/add"
-          className={clsx('btn btn-primary', sellerStatus?.kycStatus !== 'APPROVED' && 'opacity-70')}
-        >
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add Product
-        </Link>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleExportCSV}
+            className="btn btn-outline flex items-center gap-1.5 text-xs font-semibold"
+            title="Download full catalog as CSV"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+          <button
+            onClick={() => {
+              setShowImportModal(true)
+              setImportStats(null)
+            }}
+            className="btn btn-outline flex items-center gap-1.5 text-xs font-semibold"
+            title="Upload CSV to add products in bulk"
+          >
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </button>
+          <Link
+            to="/seller/products/add"
+            className={clsx('btn btn-primary', sellerStatus?.kycStatus !== 'APPROVED' && 'opacity-70')}
+          >
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add Product
+          </Link>
+        </div>
       </div>
 
       {sellerStatus?.kycStatus === 'REJECTED' && (
@@ -309,6 +459,153 @@ export default function Inventory() {
           </>
         )}
       </div>
+
+      {/* Bulk CSV Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="card w-full max-w-2xl p-6 space-y-4 bg-white dark:bg-secondary-900 shadow-2xl border border-secondary-200 dark:border-secondary-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-secondary-200 dark:border-secondary-700 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-950/50 text-primary-600">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-50">
+                    Bulk Product CSV Import
+                  </h3>
+                  <p className="text-xs text-secondary-500">
+                    Add dozens or hundreds of products at once using standard CSV format.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="p-1 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 text-secondary-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Template Download & File Picker */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-secondary-50 dark:bg-secondary-800/60 rounded-xl border border-secondary-200 dark:border-secondary-700">
+              <div className="text-xs text-secondary-600 dark:text-secondary-400">
+                <p className="font-semibold text-secondary-800 dark:text-secondary-200">Need the correct column format?</p>
+                <p>Use our sample CSV template with pre-filled example products.</p>
+              </div>
+              <button
+                type="button"
+                onClick={downloadSampleCSV}
+                className="btn btn-outline btn-sm inline-flex items-center gap-1.5 shrink-0 text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download Sample CSV
+              </button>
+            </div>
+
+            {/* File Upload / Paste Toggle */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-secondary-700 dark:text-secondary-300">
+                  Select CSV File or Paste Data:
+                </label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      const reader = new FileReader()
+                      reader.onload = (event) => {
+                        const content = event.target?.result as string
+                        setCsvRawText(content || '')
+                      }
+                      reader.readAsText(file)
+                    }
+                  }}
+                  className="text-xs text-secondary-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer"
+                />
+              </div>
+
+              <textarea
+                rows={5}
+                value={csvRawText}
+                onChange={(e) => setCsvRawText(e.target.value)}
+                placeholder="title,brand,category,price,mrp,stockQuantity,description&#10;Wireless Earbuds,AudioPro,Electronics,1499,2999,50,High quality audio&#10;Casual Cotton Shirt,UrbanStyle,Fashion,899,1999,30,100% Cotton shirt"
+                className="w-full font-mono text-xs rounded-lg border border-secondary-300 bg-white dark:bg-secondary-800 dark:border-secondary-700 p-3 text-secondary-900 dark:text-secondary-100 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            {/* Parsed Preview Table */}
+            {parsedPreview.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-secondary-800 dark:text-secondary-200">
+                    Preview ({parsedPreview.length} products detected):
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                    ✓ Validated & Ready to Import
+                  </span>
+                </div>
+                <div className="max-h-40 overflow-y-auto border border-secondary-200 dark:border-secondary-700 rounded-lg text-xs">
+                  <table className="w-full text-left">
+                    <thead className="bg-secondary-100 dark:bg-secondary-800 sticky top-0">
+                      <tr>
+                        <th className="p-2">Title</th>
+                        <th className="p-2">Category</th>
+                        <th className="p-2">Price</th>
+                        <th className="p-2">Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
+                      {parsedPreview.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-secondary-50 dark:hover:bg-secondary-800/40">
+                          <td className="p-2 font-medium truncate max-w-[200px]">{item.title}</td>
+                          <td className="p-2 text-secondary-500">{item.categoryName}</td>
+                          <td className="p-2 font-bold">₹{item.price}</td>
+                          <td className="p-2">{item.stockQuantity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Results feedback */}
+            {importStats && (
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-green-800 dark:text-green-300">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <span>
+                    Import completed: <strong>{importStats.success} created</strong>
+                    {importStats.failed > 0 && `, ${importStats.failed} failed`}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-secondary-200 dark:border-secondary-700">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="btn btn-outline btn-sm"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={parsedPreview.length === 0 || isImporting}
+                onClick={handleExecuteBulkImport}
+                className="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+              >
+                {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {isImporting ? 'Importing Products...' : `Import ${parsedPreview.length} Products`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

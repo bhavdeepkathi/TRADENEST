@@ -3,6 +3,7 @@ export enum UserRole {
   SELLER = 'SELLER',
   ADMIN = 'ADMIN',
   SUPER_ADMIN = 'SUPER_ADMIN',
+  DELIVERY_PARTNER = 'DELIVERY_PARTNER',
 }
 
 export enum OrderStatus {
@@ -62,4 +63,12 @@ export enum ProductStatus {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
   REJECTED = 'REJECTED',
+}
+export enum ShipmentStatus {
+  PENDING_PICKUP = 'PENDING_PICKUP',
+  CLAIMED = 'CLAIMED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+  RETURN_IN_TRANSIT = 'RETURN_IN_TRANSIT',
 }

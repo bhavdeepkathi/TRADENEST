@@ -55,9 +55,8 @@ export default function Register() {
         role: data.role,
       }).unwrap()
 
-      const devOtp = res?.devOtp
-      toast.success(devOtp ? `Account created! (Dev OTP: ${devOtp})` : 'Account created! Please verify your email.')
-      navigate(`/verify-email?email=${encodeURIComponent(data.email)}&role=${data.role}${devOtp ? `&otp=${devOtp}` : ''}`, { replace: true })
+      toast.success('Account created! Please check your email inbox for your 6-digit verification code.')
+      navigate(`/verify-email?email=${encodeURIComponent(data.email)}&role=${data.role}`, { replace: true })
     } catch (error) {
       const message =
         typeof error === 'object' &&

@@ -15,6 +15,7 @@ import {
   Menu,
   Bell,
   HelpCircle,
+  Wallet,
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
@@ -28,7 +29,9 @@ const sellerNavItems = [
   { label: 'Orders', href: '/seller/orders', icon: ShoppingBag },
   { label: 'Add Product', href: '/seller/products/add', icon: PlusCircle },
   { label: 'Analytics', href: '/seller/analytics', icon: BarChart2 },
+  { label: 'Payouts & Wallet', href: '/seller/payouts', icon: Wallet },
   { label: 'Settings', href: '/seller/settings', icon: Settings },
+  { label: 'Help Center', href: '/seller/help', icon: HelpCircle },
 ]
 
 export default function SellerLayout() {

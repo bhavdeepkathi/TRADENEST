@@ -1,10 +1,39 @@
-import { Search, Eye, Edit, Truck, XCircle, CheckCircle, ChevronDown, ChevronUp, Loader2, X, Package, MapPin, CreditCard, RotateCcw, Check, ExternalLink } from 'lucide-react'
+import { Search, Eye, Edit, Truck, XCircle, CheckCircle, ChevronDown, ChevronUp, Loader2, X, Package, MapPin, CreditCard, RotateCcw, Check, ExternalLink, Volume2, VolumeX, BellRing } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useGetSellerOrdersQuery, useUpdateOrderStatusMutation, useProcessReturnRequestMutation } from '../../../app/api'
 import { useAppSelector } from '../../../app/hooks'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
+
+// Web Audio API order notification synthesizer (tri-tone chime)
+const playOrderChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) return
+    const ctx = new AudioContextClass()
+    const now = ctx.currentTime
+
+    const playTone = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(freq, start)
+      gain.gain.setValueAtTime(0.35, start)
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(start)
+      osc.stop(start + duration)
+    }
+
+    playTone(587.33, now, 0.25)        // D5
+    playTone(880.0, now + 0.12, 0.35)   // A5
+    playTone(1174.66, now + 0.28, 0.55) // D6
+  } catch (err) {
+    console.warn('Audio chime error:', err)
+  }
+}
 
 const statusStyles: Record<string, string> = {
   DELIVERED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -56,7 +85,17 @@ export default function SellerOrders() {
   const [processReturn, { isLoading: isProcessingReturn }] = useProcessReturnRequestMutation()
   const limit = 20
 
-  const sellerId = user?.role === 'SELLER' ? 'me' : undefined
+  // Sound chime & desktop push notifications for new incoming orders
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try {
+      return window.localStorage.getItem('tradenest_seller_sound_enabled') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [latestOrderAlert, setLatestOrderAlert] = useState<{ id: string; total: number; time: string } | null>(null)
+
+  const sellerId = (user?.role === 'SELLER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') ? 'me' : undefined
   const { data: ordersResponse, isLoading, error, refetch } = useGetSellerOrdersQuery(
     { sellerId: sellerId!, page, limit, status: statusFilter === 'All' ? undefined : statusFilter },
     { skip: !sellerId }
@@ -235,6 +274,21 @@ export default function SellerOrders() {
       channel = new BroadcastChannel('tradenest-seller-channel')
       channel.onmessage = (event) => {
         if (event.data?.type === 'NEW_CUSTOMER_ORDER' && event.data.order) {
+          if (soundEnabled) {
+            playOrderChime()
+          }
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('🔔 New Order Received!', {
+                body: `Order #${event.data.order.id?.slice(0, 8)} for ₹${event.data.order.total || event.data.order.customerBillAmount || 950}`,
+              })
+            } catch {}
+          }
+          setLatestOrderAlert({
+            id: event.data.order.id,
+            total: event.data.order.total || event.data.order.customerBillAmount || 950,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          })
           setLocalPendingOrders((prev) => [event.data.order, ...prev.filter((o) => o.id !== event.data.order.id)])
           toast.success(`🔔 New Order #${event.data.order.id?.slice(0, 8)} received from Customer! Awaiting your approval.`, {
             duration: 8000,
@@ -274,6 +328,34 @@ export default function SellerOrders() {
             })
           }
           refetch()
+        } else if (event.data?.type === 'RETURN_REQUESTED') {
+          const { orderId, reason, returnRequest } = event.data
+          setLocalPendingOrders((prev) =>
+            prev.map((o) => {
+              if (o.id === orderId) {
+                const existingReturns = o.returns || []
+                return {
+                  ...o,
+                  returns: [
+                    returnRequest || {
+                      id: 'ret-' + Date.now(),
+                      orderId,
+                      status: 'PENDING',
+                      reason,
+                      createdAt: new Date().toISOString(),
+                    },
+                    ...existingReturns.filter((r: any) => r.status !== 'PENDING'),
+                  ],
+                }
+              }
+              return o
+            })
+          )
+          toast.success(
+            `🔄 Customer Return Requested for Order #${orderId?.slice(0, 8)}! Reason: ${reason || 'Return requested'}`,
+            { duration: 8000, icon: '🔄' }
+          )
+          refetch()
         }
       }
     } catch {}
@@ -309,9 +391,48 @@ export default function SellerOrders() {
   const orders = [...localPendingOrders.filter((o) => !existingApiIds.has(o.id)), ...apiOrders]
   const meta = ordersResponse?.meta
 
+  const pendingCount = orders.filter((o) => o.status === 'PENDING').length
+  const returnReqCount = orders.filter((o) => o.returns?.some((r: any) => r.status === 'PENDING')).length
+  const confirmedCount = orders.filter((o) => o.status === 'CONFIRMED').length
+  const processingCount = orders.filter((o) => o.status === 'PROCESSING').length
+  const shippedCount = orders.filter((o) => o.status === 'SHIPPED').length
+  const deliveredCount = orders.filter((o) => o.status === 'DELIVERED').length
+  const returnedCount = orders.filter((o) => o.status === 'RETURNED' || o.returns?.some((r: any) => r.status === 'APPROVED' || r.status === 'COMPLETED')).length
+  const cancelledCount = orders.filter((o) => o.status === 'CANCELLED').length
+
   const filteredOrders = orders
-    .filter((o) => o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.userId.toLowerCase().includes(search.toLowerCase()))
+    .filter((o) => {
+      // 1. Status Filter
+      if (statusFilter === 'RETURN_REQUESTED') {
+        const hasPendingReturn = o.returns && o.returns.some((r: any) => r.status === 'PENDING')
+        if (!hasPendingReturn) return false
+      } else if (statusFilter === 'RETURNED') {
+        const isReturned = o.status === 'RETURNED' || (o.returns && o.returns.some((r: any) => r.status === 'APPROVED' || r.status === 'COMPLETED'))
+        if (!isReturned) return false
+      } else if (statusFilter !== 'All') {
+        if (o.status !== statusFilter) return false
+      }
+
+      // 2. Search Filter (checks ID, Customer Name, User ID, Phone, City, Product Title)
+      if (search.trim()) {
+        const q = search.trim().toLowerCase()
+        const matchesId = o.id?.toLowerCase().includes(q)
+        const matchesUser = o.userId?.toLowerCase().includes(q)
+        const matchesCustomer = o.shippingAddress?.fullName?.toLowerCase().includes(q)
+        const matchesPhone = o.shippingAddress?.phone?.toLowerCase().includes(q)
+        const matchesCity = o.shippingAddress?.city?.toLowerCase().includes(q)
+        const matchesItem = o.items?.some((i: any) =>
+          (i.title && i.title.toLowerCase().includes(q)) ||
+          (i.product?.title && i.product.title.toLowerCase().includes(q))
+        )
+
+        if (!matchesId && !matchesUser && !matchesCustomer && !matchesPhone && !matchesCity && !matchesItem) {
+          return false
+        }
+      }
+
+      return true
+    })
     .sort((a, b) => {
       if (!sortConfig) return 0
       const aVal = a[sortConfig.key as keyof typeof a]
@@ -334,7 +455,17 @@ export default function SellerOrders() {
     return sortConfig?.direction === 'asc' ? <ChevronUp className="h-4 w-4 text-primary-600" /> : <ChevronDown className="h-4 w-4 text-primary-600" />
   }
 
-  const statusOptions = ['All', 'PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED']
+  const statusOptions = [
+    { label: 'All Orders', value: 'All', count: orders.length },
+    { label: 'Pending Approval', value: 'PENDING', count: pendingCount },
+    { label: 'Confirmed', value: 'CONFIRMED', count: confirmedCount },
+    { label: 'Processing', value: 'PROCESSING', count: processingCount },
+    { label: 'Shipped', value: 'SHIPPED', count: shippedCount },
+    { label: 'Delivered', value: 'DELIVERED', count: deliveredCount },
+    { label: 'Return Requests', value: 'RETURN_REQUESTED', count: returnReqCount, isAlert: true },
+    { label: 'Returned', value: 'RETURNED', count: returnedCount },
+    { label: 'Cancelled', value: 'CANCELLED', count: cancelledCount },
+  ]
 
   if (isLoading) {
     return (
@@ -379,7 +510,7 @@ export default function SellerOrders() {
     )
   }
 
-  if (error) {
+  if (error && orders.length === 0) {
     return (
       <div className="space-y-6">
         <div>
@@ -395,13 +526,79 @@ export default function SellerOrders() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Orders</h1>
-        <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage and track all your customer orders.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-secondary-900 dark:text-secondary-50">Orders</h1>
+          <p className="text-secondary-600 dark:text-secondary-400 mt-1">Manage and track all your customer orders in real-time.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soundEnabled
+              setSoundEnabled(next)
+              try {
+                window.localStorage.setItem('tradenest_seller_sound_enabled', String(next))
+              } catch {}
+              if (next) {
+                playOrderChime()
+                if ('Notification' in window && Notification.permission !== 'granted') {
+                  Notification.requestPermission()
+                }
+                toast.success('Order Sound Alerts enabled! You will hear a chime when orders arrive.')
+              } else {
+                toast('Order Sound Alerts muted.')
+              }
+            }}
+            className={clsx(
+              'btn btn-sm text-xs flex items-center gap-1.5 font-semibold transition-all',
+              soundEnabled
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                : 'bg-secondary-100 text-secondary-500 border-secondary-300 dark:bg-secondary-800 dark:text-secondary-400'
+            )}
+            title="Toggle audible chime when a new customer order is placed"
+          >
+            {soundEnabled ? <Volume2 className="h-4 w-4 text-emerald-600" /> : <VolumeX className="h-4 w-4" />}
+            <span>Sound Alert: {soundEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+        </div>
       </div>
 
+      {/* New Order Alert Live Flash Banner */}
+      {latestOrderAlert && (
+        <div className="p-4 rounded-xl border border-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-3 shadow-md animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+              <BellRing className="h-5 w-5 animate-bounce" />
+            </div>
+            <div>
+              <p className="font-extrabold text-sm">
+                🔔 Just Received: Order #{latestOrderAlert.id.slice(0, 8).toUpperCase()} (₹{latestOrderAlert.total.toLocaleString()})
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Arrived at {latestOrderAlert.time}. Check the "Pending" tab to approve and dispatch to driver fleet.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLatestOrderAlert(null)}
+            className="text-xs font-semibold px-2 py-1 bg-white/80 dark:bg-secondary-800 rounded-lg hover:bg-white"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-xl border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-800 text-red-900 dark:text-red-200 flex items-center justify-between gap-3 shadow-xs">
+          <p className="text-sm">Notice: Live order sync issue. Showing local and cached orders.</p>
+          <button onClick={() => refetch()} className="btn btn-sm btn-outline">Retry Sync</button>
+        </div>
+      )}
+
       {/* Pending Orders Banner */}
-      {orders.filter((o) => o.status === 'PENDING').length > 0 && (
+      {pendingCount > 0 && (
         <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
             <span className="flex h-3 w-3 relative">
@@ -410,7 +607,7 @@ export default function SellerOrders() {
             </span>
             <div>
               <p className="font-semibold text-sm">
-                🔔 You have {orders.filter((o) => o.status === 'PENDING').length} order(s) awaiting your approval!
+                🔔 You have {pendingCount} order(s) awaiting your approval!
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-300">
                 Click "Approve Order" below to confirm and prepare the items for shipping.
@@ -422,10 +619,81 @@ export default function SellerOrders() {
             onClick={() => setStatusFilter('PENDING')}
             className="btn btn-sm bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0"
           >
-            Filter Pending ({orders.filter((o) => o.status === 'PENDING').length})
+            Filter Pending ({pendingCount})
           </button>
         </div>
       )}
+
+      {/* Return Requests Alert Banner */}
+      {returnReqCount > 0 && (
+        <div className="p-4 rounded-xl border border-purple-300 bg-purple-50 dark:bg-purple-950/40 dark:border-purple-800 text-purple-900 dark:text-purple-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex h-3 w-3 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+            </span>
+            <div>
+              <p className="font-semibold text-sm flex items-center gap-1.5">
+                <RotateCcw className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                You have {returnReqCount} customer return request(s) awaiting your action!
+              </p>
+              <p className="text-xs text-purple-700 dark:text-purple-300">
+                A customer requested a return. Click below to inspect reason and approve pickup or decline.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('RETURN_REQUESTED')}
+            className="btn btn-sm bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shrink-0 flex items-center gap-1.5"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Review Return Requests ({returnReqCount})
+          </button>
+        </div>
+      )}
+
+      {/* Modern Filter Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {statusOptions.map((tab) => {
+          const isActive = statusFilter === tab.value
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => {
+                setStatusFilter(tab.value)
+                setPage(1)
+              }}
+              className={clsx(
+                'px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 border shrink-0',
+                isActive
+                  ? tab.value === 'RETURN_REQUESTED'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                    : 'bg-primary-600 text-white border-primary-600 shadow-xs'
+                  : tab.value === 'RETURN_REQUESTED' && tab.count > 0
+                    ? 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                    : 'bg-white dark:bg-secondary-800 text-secondary-700 dark:text-secondary-300 border-secondary-200 dark:border-secondary-700 hover:border-secondary-300 dark:hover:border-secondary-600'
+              )}
+            >
+              {tab.value === 'RETURN_REQUESTED' && <RotateCcw className="h-3 w-3" />}
+              <span>{tab.label}</span>
+              <span
+                className={clsx(
+                  'px-1.5 py-0.2 rounded-full text-[10px] font-semibold',
+                  isActive
+                    ? 'bg-white/20 text-white'
+                    : tab.value === 'RETURN_REQUESTED' && tab.count > 0
+                      ? 'bg-purple-200 text-purple-900 dark:bg-purple-800 dark:text-purple-100'
+                      : 'bg-secondary-100 dark:bg-secondary-700 text-secondary-600 dark:text-secondary-400'
+                )}
+              >
+                {tab.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
 
       {/* Search & Filters */}
       <div className="card p-4 sm:p-6">
@@ -434,7 +702,7 @@ export default function SellerOrders() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary-400" />
             <input
               type="text"
-              placeholder="Search orders by ID or customer..."
+              placeholder="Search by order ID, customer name, phone, city, or product title..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input pl-10 pr-4"
@@ -442,11 +710,16 @@ export default function SellerOrders() {
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="input w-auto"
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              setPage(1)
+            }}
+            className="input w-auto min-w-[170px]"
           >
             {statusOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label} ({opt.count})
+              </option>
             ))}
           </select>
         </div>
@@ -485,8 +758,14 @@ export default function SellerOrders() {
                     <td className="p-4 font-mono text-sm text-secondary-900 dark:text-secondary-50">{order.id.slice(0, 12)}...</td>
                     <td className="p-4">
                       <p className="font-medium text-secondary-900 dark:text-secondary-50">
-                        Customer: {order.userId.slice(0, 12)}...
+                        {order.shippingAddress?.fullName || `Customer: ${order.userId.slice(0, 8)}...`}
                       </p>
+                      <div className="flex items-center gap-1.5 text-xs text-secondary-500 mt-0.5">
+                        {order.shippingAddress?.city && <span>{order.shippingAddress.city}</span>}
+                        {order.shippingAddress?.phone && (
+                          <span>• {order.shippingAddress.phone}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-secondary-700 dark:text-secondary-300">
                       {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -594,15 +873,26 @@ export default function SellerOrders() {
                           </div>
                         )}
                         {order.returns?.some((r: any) => r.status === 'PENDING') && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 animate-pulse w-fit">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrder(order)}
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-900 dark:bg-purple-900/60 dark:text-purple-200 border border-purple-300 dark:border-purple-700 animate-pulse w-fit hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors cursor-pointer"
+                            title="Customer has requested a return. Click to review reason."
+                          >
                             <RotateCcw className="h-3 w-3" />
-                            Return Req.
-                          </span>
+                            Return Requested
+                          </button>
                         )}
                         {order.returns?.some((r: any) => r.status === 'APPROVED') && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 w-fit">
-                            <RotateCcw className="h-3 w-3" />
-                            Return Pickup Dispatched
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 w-fit">
+                            <Check className="h-3 w-3" />
+                            Return Approved
+                          </span>
+                        )}
+                        {order.returns?.some((r: any) => r.status === 'REJECTED') && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300 w-fit">
+                            <X className="h-3 w-3" />
+                            Return Declined
                           </span>
                         )}
                       </div>

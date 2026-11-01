@@ -5,6 +5,7 @@ import { asyncHandler } from '../../middlewares/errorHandler';
 import { NotFoundError, ValidationError } from '@tradenest/common';
 import { ProductQuerySchema, CreateProductDtoSchema, UpdateProductDtoSchema, ProductStatus } from '@tradenest/common';
 import { authMiddleware } from '../../middlewares/auth';
+import { importProductFromAmazon } from './amazon-importer.service';
 
 const router = Router();
 
@@ -171,6 +172,25 @@ router.get('/:id/reviews', asyncHandler(async (req, res) => {
   res.json({ data: reviews });
 }));
 
+// POST /api/products/import/amazon - One-click Amazon URL or ASIN Importer
+router.post('/import/amazon', asyncHandler(async (req, res) => {
+  const { urlOrAsin, sellerId, categoryId } = req.body;
+  const authUserId = req.headers['x-user-id'] as string | undefined;
+
+  let targetSellerId = sellerId;
+  if (!targetSellerId && authUserId) {
+    const sellerRec = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Seller" WHERE "userId" = ${authUserId} OR id = ${authUserId} LIMIT 1
+    `.catch(() => []);
+    if (sellerRec.length > 0) {
+      targetSellerId = sellerRec[0].id;
+    }
+  }
+
+  const result = await importProductFromAmazon(urlOrAsin, targetSellerId, categoryId);
+  res.json(result);
+}));
+
 // POST /api/products/:id/reviews - Submit/Update product review
 router.post('/:id/reviews', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.headers['x-user-id'] as string;
@@ -247,6 +267,127 @@ router.post('/:id/reviews', authMiddleware, asyncHandler(async (req, res) => {
   });
 
   res.status(201).json(review);
+}));
+
+// Helper to ensure ProductQuestion table exists
+async function ensureProductQuestionTable() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ProductQuestion" (
+        "id" TEXT PRIMARY KEY,
+        "productId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "userName" TEXT NOT NULL,
+        "question" TEXT NOT NULL,
+        "answer" TEXT,
+        "answeredBy" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "ProductQuestion_productId_idx" ON "ProductQuestion"("productId")
+    `);
+  } catch (err) {
+    console.error('ensureProductQuestionTable error:', err);
+  }
+}
+
+// GET /api/products/:id/questions - Fetch product Q&A
+router.get('/:id/questions', asyncHandler(async (req, res) => {
+  await ensureProductQuestionTable();
+  const product = await prisma.product.findFirst({
+    where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+    select: { id: true, title: true },
+  });
+  if (!product) throw new NotFoundError('Product');
+
+  try {
+    const questions = await prisma.$queryRaw<any[]>`
+      SELECT "id", "productId", "userId", "userName", "question", "answer", "answeredBy", "createdAt", "updatedAt"
+      FROM "ProductQuestion"
+      WHERE "productId" = ${product.id}
+      ORDER BY "createdAt" DESC
+    `;
+    res.json({ data: questions || [] });
+  } catch (err) {
+    res.json({ data: [] });
+  }
+}));
+
+// POST /api/products/:id/questions - Ask a question about this product
+router.post('/:id/questions', authMiddleware, asyncHandler(async (req, res) => {
+  await ensureProductQuestionTable();
+  const userId = req.headers['x-user-id'] as string;
+  if (!userId) throw new ValidationError('Authentication required');
+
+  const { question } = req.body || {};
+  if (!question || !String(question).trim()) throw new ValidationError('Question cannot be empty');
+
+  const product = await prisma.product.findFirst({
+    where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+    select: { id: true },
+  });
+  if (!product) throw new NotFoundError('Product');
+
+  let userName = 'Customer';
+  try {
+    const userRows = await prisma.$queryRaw<any[]>`
+      SELECT "firstName", "lastName" FROM "User" WHERE id = ${userId} LIMIT 1
+    `;
+    if (userRows?.[0]) {
+      userName = `${userRows[0].firstName} ${userRows[0].lastName || ''}`.trim();
+    }
+  } catch {}
+
+  const qId = 'pq_' + Math.random().toString(36).substring(2, 11);
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ProductQuestion" ("id", "productId", "userId", "userName", "question", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+    qId,
+    product.id,
+    userId,
+    userName,
+    String(question).trim()
+  );
+
+  res.status(201).json({
+    id: qId,
+    productId: product.id,
+    userId,
+    userName,
+    question: String(question).trim(),
+    createdAt: new Date().toISOString(),
+  });
+}));
+
+// POST /api/products/questions/:questionId/answer - Answer a product question (seller or admin)
+router.post('/questions/:questionId/answer', authMiddleware, asyncHandler(async (req, res) => {
+  await ensureProductQuestionTable();
+  const userId = req.headers['x-user-id'] as string;
+  const { answer } = req.body || {};
+  if (!answer || !String(answer).trim()) throw new ValidationError('Answer cannot be empty');
+
+  let answererName = 'Verified Seller';
+  try {
+    const sellerRows = await prisma.$queryRaw<any[]>`
+      SELECT "storeName" FROM "Seller" WHERE "userId" = ${userId} OR id = ${userId} LIMIT 1
+    `;
+    if (sellerRows?.[0]?.storeName) {
+      answererName = `${sellerRows[0].storeName} (Seller)`;
+    }
+  } catch {}
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE "ProductQuestion"
+     SET "answer" = $1, "answeredBy" = $2, "updatedAt" = NOW()
+     WHERE "id" = $3`,
+    String(answer).trim(),
+    answererName,
+    req.params.questionId
+  );
+
+  res.json({ success: true, answer: String(answer).trim(), answeredBy: answererName });
 }));
 
 // POST /api/products - Create product (seller)

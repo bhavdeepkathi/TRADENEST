@@ -15,6 +15,7 @@ enum Role {
   SELLER
   ADMIN
   SUPER_ADMIN
+  DELIVERY_PARTNER
 }
 
 model User {
@@ -38,6 +39,7 @@ model User {
   passwordResets PasswordReset[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  deliveryPartner DeliveryPartner?
 
   @@index([email])
   @@index([role])
@@ -136,4 +138,24 @@ model AuditLog {
   @@index([action])
   @@index([entity, entityId])
   @@index([createdAt])
+}
+
+model DeliveryPartner {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType     String   @default("Motorbike")
+  vehicleNumber   String?
+  hubLocation     String   @default("Mumbai Central Logistics Hub #04")
+  phone           String?
+  isOnline        Boolean  @default(true)
+  currentLat      Float?
+  currentLng      Float?
+  totalDeliveries Int      @default(0)
+  rating          Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isOnline])
+  @@index([hubLocation])
 }

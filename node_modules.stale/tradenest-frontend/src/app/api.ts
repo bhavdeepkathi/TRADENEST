@@ -86,7 +86,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment', 'Address', 'Notification', 'Coupon'],
+  tagTypes: ['Product', 'Category', 'Order', 'User', 'Cart', 'Wishlist', 'Payment', 'Address', 'Notification', 'Coupon', 'Shipment'],
   endpoints: (builder) => ({
     login: builder.mutation<{
       accessToken: string
@@ -360,6 +360,44 @@ export const api = createApi({
     }),
     deleteProduct: builder.mutation<{ message: string }, string>({
       query: (id) => ({ url: `/products/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Product'],
+    }),
+    getProductQuestions: builder.query<{
+      data: Array<{
+        id: string
+        productId: string
+        userId: string
+        userName: string
+        question: string
+        answer?: string | null
+        answeredBy?: string | null
+        createdAt: string
+      }>
+    }, string>({
+      query: (productId) => `/products/${productId}/questions`,
+      providesTags: ['Product'],
+    }),
+    askProductQuestion: builder.mutation<{
+      id: string
+      question: string
+    }, { productId: string; question: string }>({
+      query: ({ productId, ...body }) => ({
+        url: `/products/${productId}/questions`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+    answerProductQuestion: builder.mutation<{
+      success: boolean
+      answer: string
+      answeredBy: string
+    }, { questionId: string; answer: string }>({
+      query: ({ questionId, ...body }) => ({
+        url: `/products/questions/${questionId}/answer`,
+        method: 'POST',
+        body,
+      }),
       invalidatesTags: ['Product'],
     }),
     uploadProductImage: builder.mutation<{ url: string }, File>({
@@ -773,6 +811,21 @@ export const api = createApi({
       invalidatesTags: (result, error, { productId }) => [{ type: 'Product', id: productId }, 'Order'],
     }),
 
+    // Order Cancellation
+    cancelOrder: builder.mutation<{
+      success: boolean
+      message: string
+      refundedToWallet?: boolean
+      order: any
+    }, { orderId: string; reason?: string }>({
+      query: ({ orderId, ...body }) => ({
+        url: `/orders/${orderId}/cancel`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (result, error, { orderId }) => [{ type: 'Order', id: orderId }, 'Order', 'Payment'],
+    }),
+
     // Order Return Request
     createReturnRequest: builder.mutation<{
       id: string
@@ -800,6 +853,76 @@ export const api = createApi({
         body,
       }),
       invalidatesTags: ['Order'],
+    }),
+
+    // Wishlist Endpoints
+    getWishlist: builder.query<{
+      id: string
+      userId: string
+      items: Array<{
+        id: string
+        productId: string
+        createdAt: string
+        product: any
+      }>
+      total: number
+    }, void>({
+      query: () => '/wishlist',
+      providesTags: ['Wishlist'],
+    }),
+    addToWishlist: builder.mutation<{ success: boolean; message: string; item: any }, string>({
+      query: (productId) => ({
+        url: `/wishlist/${productId}`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Wishlist'],
+    }),
+    removeFromWishlist: builder.mutation<{ success: boolean; message: string }, string>({
+      query: (productId) => ({
+        url: `/wishlist/${productId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Wishlist'],
+    }),
+    clearBackendWishlist: builder.mutation<{ success: boolean; message: string }, void>({
+      query: () => ({
+        url: '/wishlist',
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Wishlist'],
+    }),
+
+    // Wallet Payouts / Withdrawals
+    requestWalletWithdrawal: builder.mutation<{
+      success: boolean
+      message: string
+      reference: string
+      remainingBalance: number
+      transaction: any
+    }, { amount: number; method: 'UPI' | 'BANK_TRANSFER'; upiId?: string; bankDetails?: any }>({
+      query: (body) => ({
+        url: '/wallet/withdraw',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Payment'],
+    }),
+    getWalletPayouts: builder.query<Array<any>, void>({
+      query: () => '/wallet/payouts',
+      providesTags: ['Payment'],
+    }),
+
+    // AI Shopping Chat Assistant
+    sendAiChatMessage: builder.mutation<{
+      reply: string
+      products?: any[]
+      quickReplies?: string[]
+    }, { message: string; history?: any[] }>({
+      query: (body) => ({
+        url: '/ai/chat',
+        method: 'POST',
+        body,
+      }),
     }),
 
     // Seller Analytics
@@ -1055,6 +1178,103 @@ export const api = createApi({
       }),
       invalidatesTags: ['User'],
     }),
+    getShipments: builder.query<{
+      data: Array<any>
+      total: number
+      unclaimedCount: number
+      outForDeliveryCount: number
+      deliveredCount: number
+    }, { status?: string; driverId?: string; search?: string; filter?: string } | void>({
+      query: (params) => ({
+        url: '/logistics/shipments',
+        params: params || undefined,
+      }),
+      providesTags: ['Shipment'],
+    }),
+    claimShipment: builder.mutation<{
+      success: boolean
+      message: string
+      shipment: any
+    }, { id: string; driverId: string; driverName?: string; driverPhone?: string; driverVehicle?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/logistics/shipments/${id}/claim`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shipment', 'Order'],
+    }),
+    updateShipmentStatus: builder.mutation<{
+      success: boolean
+      shipment: any
+    }, { id: string; status: string; deliveryOtp?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/logistics/shipments/${id}/status`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Shipment', 'Order'],
+    }),
+    requestDoorstepOtp: builder.mutation<{
+      success: boolean
+      message: string
+      freshOtp?: string
+      shipment?: any
+    }, { id: string; isReturnPickup?: boolean }>({
+      query: ({ id, ...body }) => ({
+        url: `/logistics/shipments/${id}/request-otp`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shipment', 'Order'],
+    }),
+    rescheduleDelivery: builder.mutation<{
+      success: boolean
+      message: string
+      shipment?: any
+    }, { id: string; reason?: string; rescheduledDate?: string; notes?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/logistics/shipments/${id}/reschedule`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shipment', 'Order'],
+    }),
+    reconcileCash: builder.mutation<{
+      success: boolean
+      message: string
+      reconciledAt?: string
+      receiptNumber?: string
+    }, { amount: number; driverId?: string; notes?: string }>({
+      query: (body) => ({
+        url: '/logistics/reconcile-cash',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shipment'],
+    }),
+    getOrderTracking: builder.query<{
+      orderId: string
+      status: string
+      deliveryOtp: string
+      driver: { name: string; phone: string; vehicle: string } | null
+      checkpoints: Array<{ title: string; description: string; completed: boolean; timestamp?: string | null }>
+    }, string>({
+      query: (orderId) => ({
+        url: `/logistics/track/${orderId}`,
+      }),
+      providesTags: ['Shipment', 'Order'],
+    }),
+    getLogisticsStats: builder.query<{
+      total: number
+      unclaimed: number
+      active: number
+      delivered: number
+      payoutPerDelivery: number
+      estimatedEarnings: number
+    }, void>({
+      query: () => ({ url: '/logistics/stats' }),
+      providesTags: ['Shipment'],
+    }),
     createTestAlert: builder.mutation<any, { type: 'infra' | 'fraud'; severity?: string; message?: string }>({
       query: (body) => ({
         url: '/users/admin/alerts/test',
@@ -1062,6 +1282,20 @@ export const api = createApi({
         body,
       }),
       invalidatesTags: ['User'],
+    }),
+importAmazonProduct: builder.mutation<{
+      success: boolean
+      message: string
+      product: any
+      asin?: string
+      isExisting?: boolean
+    }, { urlOrAsin: string; sellerId?: string; categoryId?: string }>({
+      query: (body) => ({
+        url: '/products/import/amazon',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
     }),
   }),
 })
@@ -1104,6 +1338,14 @@ export const {
   useUpdateOrderStatusMutation,
   useGetProductReviewsQuery,
   useCreateProductReviewMutation,
+  useCancelOrderMutation,
+  useGetWishlistQuery,
+  useAddToWishlistMutation,
+  useRemoveFromWishlistMutation,
+  useClearBackendWishlistMutation,
+  useRequestWalletWithdrawalMutation,
+  useGetWalletPayoutsQuery,
+  useSendAiChatMessageMutation,
   useCreateReturnRequestMutation,
   useProcessReturnRequestMutation,
   useGetSellerAnalyticsQuery,
@@ -1128,4 +1370,16 @@ export const {
   useGetAdminAlertsQuery,
   useAcknowledgeAlertMutation,
   useCreateTestAlertMutation,
+  useGetShipmentsQuery,
+  useClaimShipmentMutation,
+  useUpdateShipmentStatusMutation,
+  useRequestDoorstepOtpMutation,
+  useRescheduleDeliveryMutation,
+  useReconcileCashMutation,
+  useGetOrderTrackingQuery,
+  useGetLogisticsStatsQuery,
+  useGetProductQuestionsQuery,
+  useAskProductQuestionMutation,
+  useAnswerProductQuestionMutation,
+  useImportAmazonProductMutation,
 } = api

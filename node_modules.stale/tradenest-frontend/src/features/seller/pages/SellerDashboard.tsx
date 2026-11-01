@@ -176,9 +176,19 @@ export default function SellerDashboard() {
                       ₹{Number(order.total || 0).toLocaleString('en-IN')}
                     </td>
                     <td className="p-4">
-                      <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', statusStyles[order.status] || 'bg-gray-100 text-gray-700')}>
-                        {order.status}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', statusStyles[order.status] || 'bg-gray-100 text-gray-700')}>
+                          {order.status}
+                        </span>
+                        {order.returns?.some((r: any) => r.status === 'PENDING') && (
+                          <Link
+                            to="/seller/orders?status=RETURN_REQUESTED"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-900 dark:bg-purple-900/50 dark:text-purple-200 border border-purple-200 dark:border-purple-700 animate-pulse hover:bg-purple-200"
+                          >
+                            Return Req.
+                          </Link>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-secondary-500 dark:text-secondary-400">
                       {new Date(order.createdAt).toLocaleDateString('en-IN')}

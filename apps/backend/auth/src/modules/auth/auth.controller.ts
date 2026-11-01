@@ -144,7 +144,6 @@ export class AuthService {
         message: emailResult.sentViaSmtp
           ? 'Verification code sent to your email. Please check your inbox (and spam folder).'
           : 'A fresh verification code has been generated.',
-        ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
         sentViaSmtp: emailResult.sentViaSmtp,
       };
     }
@@ -178,7 +177,6 @@ export class AuthService {
       message: emailResult.sentViaSmtp
         ? 'Verification code sent to your email. Please check your inbox (and spam folder).'
         : 'Registration successful. Please verify your email with the OTP sent.',
-      ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
       sentViaSmtp: emailResult.sentViaSmtp,
     };
   }
@@ -402,7 +400,6 @@ export class AuthService {
       message: emailResult.sentViaSmtp
         ? 'A fresh verification code has been dispatched to your email inbox.'
         : 'A fresh verification code has been generated.',
-      ...(config.NODE_ENV !== 'production' && !emailResult.sentViaSmtp ? { devOtp: otp } : {}),
       sentViaSmtp: emailResult.sentViaSmtp,
     };
   }

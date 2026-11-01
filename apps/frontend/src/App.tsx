@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAppDispatch, useAppSelector } from './app/hooks'
 import { api } from './app/api'
@@ -16,33 +16,63 @@ import Layout from './components/Layout'
 import SellerLayout from './components/SellerLayout'
 import AdminLayout from './components/AdminLayout'
 import LogisticsLayout from './components/LogisticsLayout'
-import LogisticsDashboard from './features/logistics/pages/LogisticsDashboard'
+
+// Critical path public catalog pages (loaded eagerly for instant LCP)
 import Home from './features/catalog/pages/Home'
 import ProductList from './features/catalog/pages/ProductList'
 import ProductDetail from './features/catalog/pages/ProductDetail'
-import AdminDashboard from './features/admin/pages/AdminDashboard'
-import KycApprovals from './features/admin/pages/KycApprovals'
-import ProductModeration from './features/admin/pages/ProductModeration'
-import UserManagement from './features/admin/pages/UserManagement'
-import AlertsManagement from './features/admin/pages/AlertsManagement'
 import Login from './features/auth/pages/Login'
 import Register from './features/auth/pages/Register'
 import VerifyEmail from './features/auth/pages/VerifyEmail'
 import ForgotPassword from './features/auth/pages/ForgotPassword'
 import ResetPassword from './features/auth/pages/ResetPassword'
-import CartPage from './features/cart/pages/CartPage'
-import Checkout from './features/checkout/pages/Checkout'
-import Profile from './features/profile/pages/Profile'
-import Orders from './features/orders/pages/Orders'
-import OrderDetail from './features/orders/pages/OrderDetail'
-import WishlistPage from './features/wishlist/pages/WishlistPage'
-import SellerDashboard from './features/seller/pages/SellerDashboard'
-import Inventory from './features/seller/pages/Inventory'
-import SellerOrders from './features/seller/pages/Orders'
-import AddProduct from './features/seller/pages/AddProduct'
-import Analytics from './features/seller/pages/Analytics'
-import SellerSettings from './features/seller/pages/Settings'
-import SellerProfile from './features/seller/pages/Profile'
+
+// Code-split route chunks (loaded on-demand to shrink initial bundle)
+const CartPage = lazy(() => import('./features/cart/pages/CartPage'))
+const Checkout = lazy(() => import('./features/checkout/pages/Checkout'))
+const Profile = lazy(() => import('./features/profile/pages/Profile'))
+const Orders = lazy(() => import('./features/orders/pages/Orders'))
+const OrderDetail = lazy(() => import('./features/orders/pages/OrderDetail'))
+const WishlistPage = lazy(() => import('./features/wishlist/pages/WishlistPage'))
+
+// Public Static & Help Pages
+const HelpCenter = lazy(() => import('./features/pages/HelpCenter'))
+const ContactUs = lazy(() => import('./features/pages/ContactUs'))
+const AboutUs = lazy(() => import('./features/pages/AboutUs'))
+const ShippingPolicy = lazy(() => import('./features/pages/ShippingPolicy'))
+const ReturnsPolicy = lazy(() => import('./features/pages/ReturnsPolicy'))
+const LegalPage = lazy(() => import('./features/pages/LegalPage'))
+const DealsPage = lazy(() => import('./features/pages/DealsPage'))
+
+// Admin suite chunks
+const AdminDashboard = lazy(() => import('./features/admin/pages/AdminDashboard'))
+const KycApprovals = lazy(() => import('./features/admin/pages/KycApprovals'))
+const ProductModeration = lazy(() => import('./features/admin/pages/ProductModeration'))
+const UserManagement = lazy(() => import('./features/admin/pages/UserManagement'))
+const AlertsManagement = lazy(() => import('./features/admin/pages/AlertsManagement'))
+
+// Seller suite chunks
+const SellerDashboard = lazy(() => import('./features/seller/pages/SellerDashboard'))
+const Inventory = lazy(() => import('./features/seller/pages/Inventory'))
+const SellerOrders = lazy(() => import('./features/seller/pages/Orders'))
+const AddProduct = lazy(() => import('./features/seller/pages/AddProduct'))
+const Analytics = lazy(() => import('./features/seller/pages/Analytics'))
+const SellerSettings = lazy(() => import('./features/seller/pages/Settings'))
+const SellerProfile = lazy(() => import('./features/seller/pages/Profile'))
+const Payouts = lazy(() => import('./features/seller/pages/Payouts'))
+const SellerHelp = lazy(() => import('./features/seller/pages/SellerHelp'))
+
+// Logistics suite chunk
+const LogisticsDashboard = lazy(() => import('./features/logistics/pages/LogisticsDashboard'))
+
+function PageLoader() {
+  return (
+    <div className="min-h-[50vh] flex flex-col items-center justify-center p-8">
+      <div className="h-8 w-8 rounded-full border-3 border-secondary-200 border-t-primary-600 animate-spin" />
+      <span className="mt-3 text-xs font-medium text-secondary-500">Loading...</span>
+    </div>
+  )
+}
 
 function PageTransition() {
   return (
@@ -133,82 +163,95 @@ function App() {
   return (
     <ErrorBoundary>
       <RoleRouteSync />
-      <Routes>
-        {/* Settings generic redirect */}
-        <Route path="/settings" element={<RoleSettingsRedirect />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Settings generic redirect */}
+          <Route path="/settings" element={<RoleSettingsRedirect />} />
 
-        {/* Public Routes (no layout) */}
-        <Route element={<GuestRoute />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-        </Route>
+          {/* Public Routes (no layout) */}
+          <Route element={<GuestRoute />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+          </Route>
 
-      {/* Catalog & Customer Routes */}
-      <Route element={<Layout />}>
-        <Route element={<PageTransition />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/products" element={<ProductList />} />
-          <Route path="/products/:slug" element={<ProductDetail />} />
-          <Route element={<ProtectedRoute />}>
-            <Route element={<CustomerRoute />}>
-              <Route path="/cart" element={<CartPage />} />
-              <Route path="/wishlist" element={<WishlistPage />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/orders/:id" element={<OrderDetail />} />
+          {/* Catalog & Customer Routes */}
+          <Route element={<Layout />}>
+            <Route element={<PageTransition />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/products" element={<ProductList />} />
+              <Route path="/products/:slug" element={<ProductDetail />} />
+              <Route path="/about" element={<AboutUs />} />
+              <Route path="/contact" element={<ContactUs />} />
+              <Route path="/help" element={<HelpCenter />} />
+              <Route path="/faqs" element={<HelpCenter />} />
+              <Route path="/shipping" element={<ShippingPolicy />} />
+              <Route path="/returns" element={<ReturnsPolicy />} />
+              <Route path="/privacy" element={<LegalPage />} />
+              <Route path="/terms" element={<LegalPage />} />
+              <Route path="/cookies" element={<LegalPage />} />
+              <Route path="/deals" element={<DealsPage />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<CustomerRoute />}>
+                  <Route path="/cart" element={<CartPage />} />
+                  <Route path="/wishlist" element={<WishlistPage />} />
+                  <Route path="/checkout" element={<Checkout />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/orders/:id" element={<OrderDetail />} />
+                </Route>
+              </Route>
             </Route>
           </Route>
-        </Route>
-      </Route>
 
-      {/* Seller Routes */}
-      <Route element={<SellerLayout />}>
-        <Route element={<ProtectedRoute />}>
-          <Route element={<SellerRoute />}>
-            <Route path="/seller/dashboard" element={<SellerDashboard />} />
-            <Route path="/seller/inventory" element={<Inventory />} />
-            <Route path="/seller/orders" element={<SellerOrders />} />
-            <Route path="/seller/orders/:id" element={<SellerOrders />} />
-            <Route path="/seller/products/add" element={<AddProduct />} />
-            <Route path="/seller/products/:id/edit" element={<AddProduct />} />
-            <Route path="/seller/analytics" element={<Analytics />} />
-            <Route path="/seller/settings" element={<SellerSettings />} />
-            <Route path="/seller/profile" element={<SellerProfile />} />
-            <Route path="/seller/help" element={<div className="p-8">Help Center</div>} />
+          {/* Seller Routes */}
+          <Route element={<SellerLayout />}>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<SellerRoute />}>
+                <Route path="/seller/dashboard" element={<SellerDashboard />} />
+                <Route path="/seller/inventory" element={<Inventory />} />
+                <Route path="/seller/orders" element={<SellerOrders />} />
+                <Route path="/seller/orders/:id" element={<SellerOrders />} />
+                <Route path="/seller/products/add" element={<AddProduct />} />
+                <Route path="/seller/products/:id/edit" element={<AddProduct />} />
+                <Route path="/seller/analytics" element={<Analytics />} />
+                <Route path="/seller/settings" element={<SellerSettings />} />
+                <Route path="/seller/profile" element={<SellerProfile />} />
+                <Route path="/seller/payouts" element={<Payouts />} />
+                <Route path="/seller/help" element={<SellerHelp />} />
+              </Route>
+            </Route>
           </Route>
-        </Route>
-      </Route>
 
-      {/* Admin & Super-Admin Routes */}
-      <Route element={<AdminLayout />}>
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AdminRoute />}>
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
-            <Route path="/admin/sellers" element={<KycApprovals />} />
-            <Route path="/admin/products" element={<ProductModeration />} />
-            <Route path="/admin/users" element={<UserManagement />} />
-            <Route path="/admin/alerts" element={<AlertsManagement />} />
+          {/* Admin & Super-Admin Routes */}
+          <Route element={<AdminLayout />}>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AdminRoute />}>
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                <Route path="/admin/sellers" element={<KycApprovals />} />
+                <Route path="/admin/products" element={<ProductModeration />} />
+                <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin/alerts" element={<AlertsManagement />} />
+              </Route>
+            </Route>
           </Route>
-        </Route>
-      </Route>
 
-      {/* Logistics & Delivery Partner Routes */}
-      <Route element={<LogisticsLayout />}>
-        <Route element={<ProtectedRoute />}>
-          <Route element={<LogisticsRoute />}>
-            <Route path="/logistics" element={<Navigate to="/logistics/dashboard" replace />} />
-            <Route path="/logistics/dashboard" element={<LogisticsDashboard />} />
+          {/* Logistics & Delivery Partner Routes */}
+          <Route element={<LogisticsLayout />}>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<LogisticsRoute />}>
+                <Route path="/logistics" element={<Navigate to="/logistics/dashboard" replace />} />
+                <Route path="/logistics/dashboard" element={<LogisticsDashboard />} />
+              </Route>
+            </Route>
           </Route>
-        </Route>
-      </Route>
 
-      {/* Fallback - redirect based on role */}
-      <Route path="*" element={<RoleFallbackRedirect />} />
-    </Routes>
+          {/* Fallback - redirect based on role */}
+          <Route path="*" element={<RoleFallbackRedirect />} />
+        </Routes>
+      </Suspense>
     </ErrorBoundary>
   )
 }
